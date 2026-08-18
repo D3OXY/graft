@@ -3,7 +3,7 @@ id: 7
 title: "Research: object models & sync in jj, Pijul, Fossil, Sapling"
 type: research
 status: open
-assignee:
+assignee: d3oxy (research agent running)
 blocked-by: []
 ---
 

@@ -3,7 +3,7 @@ id: 8
 title: "Research: E2E team secrets prior art (age, sops, Doppler, Infisical)"
 type: research
 status: open
-assignee:
+assignee: d3oxy (research agent running)
 blocked-by: []
 ---
 
