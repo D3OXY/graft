@@ -20,7 +20,14 @@
   Not synced in v1.
 - **Secret**: a team-shared value (env var etc.) stored E2E-encrypted in a Secret Bundle;
   the hub syncs ciphertext and never sees plaintext.
-- **Secret Bundle**: the artifact type carrying secrets — opaque ciphertext plus minimal
-  plaintext routing metadata; recipient/key model pending its ticket.
+- **Secret Bundle**: the artifact type carrying secrets — the entire value set of one
+  Environment at one Generation, names and values encrypted, plus minimal plaintext
+  routing metadata. Replaced whole on any change.
+- **Environment**: the access boundary for secrets (e.g. dev/staging/prod). Membership in
+  an Environment is what "having access" means; created on demand, not from a fixed set.
+- **Keyring**: the single per-repo artifact recording members' public keys and each
+  Environment's wrapped keys; every update is signed by an existing member.
+- **Generation**: one era of an Environment's key. Rotation starts a new Generation;
+  removing a member always rotates. Generations chain, so joining grants history.
 - **Proposal** *(provisional)*: the PR-equivalent; semantics and final name pending its
   ticket.

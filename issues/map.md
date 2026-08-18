@@ -33,14 +33,17 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [Research: object models & sync in jj, Pijul, Fossil, Sapling](007-research-vcs-prior-art.md) — jj semantics (change IDs, first-class conflicts, op log) on Fossil bones (frozen artifact format + SQLite derived cache, set-reconciliation sync); Sapling laziness reachable; Pijul a cautionary tale. Full doc on `research/vcs-prior-art`.
 - [Research: E2E team secrets prior art (age, sops, Doppler, Infisical)](008-research-secrets-prior-art.md) — per-user X25519 keys, per-environment env keys wrapped per-recipient (age stanzas) as plain repo objects; add = re-wrap, remove = forced rotation; revocation honestly future-only. Full doc on `research/secrets-prior-art`.
 - [Decide the object model](009-object-model.md) — grow-only bag of BLAKE3-256 artifacts (blob/tree/revision/secret-bundle, text cards + binary tree entries); Change (stable random ID) vs Revision (immutable artifact) split; jj tree-list conflicts; local-only op log; SQLite storage with rebuildable derived tables; frozen-format evolution law.
+- [Decide the secrets model](010-secrets-model.md) — per-user X25519 keys; env = only access boundary (env key + generations, age-stanza wraps); bundle = whole-env snapshot on a `secrets/<env>` ref, parallel to code history; single member-signed keyring, TOFU root; removal forces rotation, no escrow; crypto-only enforcement (hub sees opaque bytes + metadata); revocation honestly future-only; plaintext never touches the tree.
 
 ## Not yet specified
 
 - Substrate growth path: how auto-snapshotting evolves from CLI command → watcher daemon
   → filesystem-level capture. The object model's doors are now fixed (op-log graduation,
   new artifact types, frozen-format law); what remains foggy is the capture pipeline itself.
-- Org/team structure and fine-grained roles beyond v1's minimal access control — sharpens
-  after the secrets model fixes what "access" even means.
+- Org/team structure and fine-grained roles beyond v1's minimal access control. The
+  secrets model has now fixed what "access" means (env membership, crypto-enforced; any
+  member can grant/rotate); what stays foggy is hub-side org/team/role structure layered
+  on top — post-v1, revisit alongside hosted multi-tenant.
 - Hosted multi-tenant path (isolation, billing) — post-v1, but the hub architecture ticket
   should note anything that would foreclose it.
 - Protocol versioning / federation between hubs.
