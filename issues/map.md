@@ -32,12 +32,13 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [The name is Graft](006-name-graft.md) — grafting: joining a living branch onto another stock so they grow as one.
 - [Research: object models & sync in jj, Pijul, Fossil, Sapling](007-research-vcs-prior-art.md) — jj semantics (change IDs, first-class conflicts, op log) on Fossil bones (frozen artifact format + SQLite derived cache, set-reconciliation sync); Sapling laziness reachable; Pijul a cautionary tale. Full doc on `research/vcs-prior-art`.
 - [Research: E2E team secrets prior art (age, sops, Doppler, Infisical)](008-research-secrets-prior-art.md) — per-user X25519 keys, per-environment env keys wrapped per-recipient (age stanzas) as plain repo objects; add = re-wrap, remove = forced rotation; revocation honestly future-only. Full doc on `research/secrets-prior-art`.
+- [Decide the object model](009-object-model.md) — grow-only bag of BLAKE3-256 artifacts (blob/tree/revision/secret-bundle, text cards + binary tree entries); Change (stable random ID) vs Revision (immutable artifact) split; jj tree-list conflicts; local-only op log; SQLite storage with rebuildable derived tables; frozen-format evolution law.
 
 ## Not yet specified
 
 - Substrate growth path: how auto-snapshotting evolves from CLI command → watcher daemon
-  → filesystem-level capture; depends entirely on the object model.
-- Large/binary file strategy (chunking? partial clone?) — sharpens after object model.
+  → filesystem-level capture. The object model's doors are now fixed (op-log graduation,
+  new artifact types, frozen-format law); what remains foggy is the capture pipeline itself.
 - Org/team structure and fine-grained roles beyond v1's minimal access control — sharpens
   after the secrets model fixes what "access" even means.
 - Hosted multi-tenant path (isolation, billing) — post-v1, but the hub architecture ticket

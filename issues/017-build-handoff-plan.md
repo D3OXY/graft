@@ -4,7 +4,7 @@ title: "Write the build handoff plan"
 type: task
 status: open
 assignee:
-blocked-by: [10, 11, 14, 15, 16]
+blocked-by: [10, 11, 14, 15, 16, 18]
 ---
 
 ## Question

@@ -4,10 +4,23 @@
   joining a living branch onto another stock so they grow as one.
 - **Hub**: the self-hostable GitHub-equivalent for Graft repos (working name; may get its
   own product name — see hub-architecture ticket).
-- **Change**: Graft's commit-equivalent — a snapshot of the tree plus parents and message.
-- **Change ID**: the stable identity of a Change that survives rewriting/amending;
-  distinct from its content hash (jj-style).
-- **Secret**: a team-shared value (env var etc.) stored as an E2E-encrypted repo object;
+- **Artifact**: an immutable, content-addressed object in a repo's canonical store
+  (BLAKE3-256). The repo is a grow-only set of artifacts; everything else is derived.
+  v1 artifact types: blob, tree, revision, secret bundle.
+- **Change**: the evolving unit of work — what you amend, rebase, and discuss. Not itself
+  an artifact; it is the identity that revisions carry.
+- **Change ID**: the stable random identity of a Change; minted at creation, survives
+  rewriting. Distinct from any content hash (jj-style).
+- **Revision**: the immutable artifact recording one version of a Change — tree, parents,
+  change ID, message. Its content hash is the revision ID; rewriting a Change makes a new
+  Revision with the same change ID.
+- **Divergence**: the state of a Change with more than one visible Revision — displayed,
+  never an error.
+- **Op log**: per-workspace, local-only log of operations (jj-style views); powers undo.
+  Not synced in v1.
+- **Secret**: a team-shared value (env var etc.) stored E2E-encrypted in a Secret Bundle;
   the hub syncs ciphertext and never sees plaintext.
+- **Secret Bundle**: the artifact type carrying secrets — opaque ciphertext plus minimal
+  plaintext routing metadata; recipient/key model pending its ticket.
 - **Proposal** *(provisional)*: the PR-equivalent; semantics and final name pending its
   ticket.
