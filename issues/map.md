@@ -30,6 +30,7 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [Hub is self-hostable: one process, SQLite](004-hosting-model.md) — OSS-first; hosted multi-tenant later as a deploy decision, not a rewrite.
 - [Rust core and CLI](005-rust-core.md) — the substrate bet needs native perf (mmap, hashing, daemon/FUSE later) and single-binary distribution. Hub server language decided in hub architecture.
 - [The name is Graft](006-name-graft.md) — grafting: joining a living branch onto another stock so they grow as one.
+- [Research: object models & sync in jj, Pijul, Fossil, Sapling](007-research-vcs-prior-art.md) — jj semantics (change IDs, first-class conflicts, op log) on Fossil bones (frozen artifact format + SQLite derived cache, set-reconciliation sync); Sapling laziness reachable; Pijul a cautionary tale. Full doc on `research/vcs-prior-art`.
 
 ## Not yet specified
 
