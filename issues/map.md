@@ -31,6 +31,7 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [Rust core and CLI](005-rust-core.md) — the substrate bet needs native perf (mmap, hashing, daemon/FUSE later) and single-binary distribution. Hub server language decided in hub architecture.
 - [The name is Graft](006-name-graft.md) — grafting: joining a living branch onto another stock so they grow as one.
 - [Research: object models & sync in jj, Pijul, Fossil, Sapling](007-research-vcs-prior-art.md) — jj semantics (change IDs, first-class conflicts, op log) on Fossil bones (frozen artifact format + SQLite derived cache, set-reconciliation sync); Sapling laziness reachable; Pijul a cautionary tale. Full doc on `research/vcs-prior-art`.
+- [Research: E2E team secrets prior art (age, sops, Doppler, Infisical)](008-research-secrets-prior-art.md) — per-user X25519 keys, per-environment env keys wrapped per-recipient (age stanzas) as plain repo objects; add = re-wrap, remove = forced rotation; revocation honestly future-only. Full doc on `research/secrets-prior-art`.
 
 ## Not yet specified
 
