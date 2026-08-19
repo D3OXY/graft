@@ -3,7 +3,7 @@ id: 18
 title: "Decide the large-file strategy for v1"
 type: grilling
 status: open
-assignee:
+assignee: d3oxy
 blocked-by: [9]
 ---
 
