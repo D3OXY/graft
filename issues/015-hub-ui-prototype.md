@@ -3,7 +3,7 @@ id: 15
 title: "Prototype the hub UI"
 type: prototype
 status: open
-assignee:
+assignee: d3oxy
 blocked-by: [13]
 ---
 
