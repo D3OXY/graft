@@ -3,7 +3,7 @@ id: 13
 title: "Decide proposal semantics"
 type: grilling
 status: open
-assignee:
+assignee: d3oxy
 blocked-by: [9]
 ---
 
