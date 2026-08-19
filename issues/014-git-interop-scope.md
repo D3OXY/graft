@@ -3,7 +3,7 @@ id: 14
 title: "Scope git interop for v1"
 type: grilling
 status: open
-assignee:
+assignee: d3oxy
 blocked-by: []
 ---
 
