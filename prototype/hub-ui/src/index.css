@@ -1,1 +1,43 @@
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;450;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap");
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque", "IBM Plex Sans", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+
+  /* graft green — the accent. warmer + deeper than emerald. */
+  --color-graft-50: #f2faf5;
+  --color-graft-100: #e0f3e8;
+  --color-graft-200: #c2e6d1;
+  --color-graft-300: #93d1ae;
+  --color-graft-400: #58b483;
+  --color-graft-500: #329763;
+  --color-graft-600: #217a4e;
+  --color-graft-700: #1c6241;
+  --color-graft-800: #194e36;
+  --color-graft-900: #16402e;
+
+  /* warm ink neutrals for variant A */
+  --color-ink-50: #fafaf8;
+  --color-ink-100: #f2f1ee;
+  --color-ink-200: #e4e2dd;
+  --color-ink-300: #cfccc4;
+  --color-ink-400: #a8a49a;
+  --color-ink-500: #7d7970;
+  --color-ink-600: #5c584f;
+  --color-ink-700: #45423b;
+  --color-ink-800: #2e2c27;
+  --color-ink-900: #201e1a;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
