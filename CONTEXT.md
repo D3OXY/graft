@@ -2,8 +2,8 @@
 
 - **Graft**: the version control system itself (Rust core + CLI). Named for grafting —
   joining a living branch onto another stock so they grow as one.
-- **Hub**: the self-hostable GitHub-equivalent for Graft repos (working name; may get its
-  own product name — see hub-architecture ticket).
+- **Hub**: the self-hostable GitHub-equivalent for Graft repos. Named **Graft Hub** — no
+  separate product name (decided in the hub-architecture ticket).
 - **Artifact**: an immutable, content-addressed object in a repo's canonical store
   (BLAKE3-256). The repo is a grow-only set of artifacts; everything else is derived.
   v1 artifact types: blob, tree, revision, secret bundle.
@@ -39,3 +39,5 @@
   fast-forwards. A Proposal whose rebased result is conflicted cannot land.
 - **Interdiff**: the diff between two Revisions of the same Change — how a reviewer sees
   what an amend actually changed.
+- **Issue**: the hub's minimal per-repo discussion unit — numbered, markdown title/body,
+  flat comment timeline, open/closed. Lives on the hub, not in the repo.

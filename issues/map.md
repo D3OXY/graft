@@ -39,6 +39,7 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [Decide proposal semantics](013-proposal-semantics.md) — Proposal (name final) = stack of changes reviewed change-by-change, landed atomically by hub-computed rebase-and-land (conflicted results refused; hub embeds the Rust core); comments/threads/approve floor; automatic amend tracking with per-revision anchors + interdiffs; `proposals/<id>` refs as GC roots; write-access-only, hub-side rows.
 - [Scope git interop for v1](014-git-interop-scope.md) — one-way `graft import`: full history, deterministic (change IDs derived from git hashes so independent imports converge), one-shot, via `git fast-export` shell-out; export deferred with a spec-stated lock-in guarantee; colocation out.
 - [Prototype the hub UI](015-hub-ui-prototype.md) — variant A ratified: GitHub-shaped frame carrying graft vocabulary — stack strip, change-by-change review with interdiff jumps, land panel that refuses conflicts, metadata-only env screen. Asset in `prototype/hub-ui/` (branch `prototype/hub-ui`).
+- [Decide hub architecture](016-hub-architecture.md) — axum binary embedding the core; per-repo core-store db files + one hub.db; sessions/PATs with first-user-admin and open|invite registration; personal repos + collaborators, anonymous read of public repos; minimal issues (title/body/comments/state) decided here; SPA embedded in the binary, internal REST; single binary + one data dir to deploy; stays "Graft Hub", no separate name.
 
 ## Not yet specified
 
@@ -49,8 +50,12 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
   secrets model has now fixed what "access" means (env membership, crypto-enforced; any
   member can grant/rotate); what stays foggy is hub-side org/team/role structure layered
   on top — post-v1, revisit alongside hosted multi-tenant.
-- Hosted multi-tenant path (isolation, billing) — post-v1, but the hub architecture ticket
-  should note anything that would foreclose it.
+- Hosted multi-tenant path (isolation, billing) — post-v1. The hub architecture ticket
+  paid its debt here: nothing in v1 forecloses it (per-repo db files make tenant isolation
+  a directory-layout question).
+- Auth growth: OIDC/OAuth, SMTP-backed flows (verification, reset), fine-grained PAT
+  scoping, and a public/versioned REST API — all post-v1; the hub architecture resolution
+  keeps each door open (scope column, internal-only API stance).
 - Federation between hubs. CLI↔hub versioning is now decided (capability handshake, sync
   ticket); hub↔hub sync and identity across hubs stay foggy.
 - Post-v1 review depth: fork-based contribution (change IDs are globally unique, so a
