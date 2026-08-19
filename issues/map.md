@@ -2,7 +2,7 @@
 id: map
 title: "Graft: v1 spec for a substrate-ready VCS + hub"
 labels: [wayfinder:map]
-status: open
+status: closed
 ---
 
 ## Destination
@@ -45,11 +45,12 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [Freeze the secrets cryptographic contracts](020-freeze-secrets-crypto-contracts.md) — one portable dual-key credential; pure Ed25519-signed canonical Keyrings; native age identities and complete age v1 files end-to-end; remembered-tip rollback resistance with fresh-clone TOFU.
 - [Decide credential, Hub, and remote bootstrap](021-credential-hub-remote-bootstrap.md) — one `graft auth` namespace (login/logout/whoami/export/import); lazy credential auto-create, one global identity, `~/.graft/` storage; paste-PAT login with auto-published Member Identity; single remote per repo + `push --create` via internal API; `GRAFT_TOKEN`/`GRAFT_CREDENTIAL_FILE` for CI, prompts hard-fail off-TTY.
 - [Freeze secret input and process-environment portability](022-secret-input-portability.md) — values enter via prompt/stdin or strict dotenv import, never argv; POSIX-strict names (case collisions rejected), UTF-8 no-NUL values with size caps; `unset` added to the verb surface; `run` inherits + overlays with secrets winning; atomic pre-flight aborts on any uninjectable value.
+- [Write the build handoff plan](017-build-handoff-plan.md) — final route at `docs/build-handoff.md`: twelve session-sized packages with crate/path ownership, dependency order, verification gates, and the `v1_journey` acceptance test; all decisions incorporated. **This closed the map** — implementation starts at Package 01.
 
 ## Not yet specified
 
-None. The remaining in-scope questions are sharp enough to be active tickets; future
-growth below is outside this map.
+None. Every in-scope question is decided; the map is closed. Future growth below is
+outside this map.
 
 ## Out of scope
 

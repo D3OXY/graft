@@ -1,13 +1,5 @@
 # Graft v1 build handoff
 
-> **Draft:** the final handoff audit surfaced two user-flow contracts that the locked
-> architecture does not yet answer:
-> [Decide credential, Hub, and remote bootstrap](../issues/021-credential-hub-remote-bootstrap.md)
-> and
-> [Freeze secret input and process-environment portability](../issues/022-secret-input-portability.md).
-> Packages 06, 07, 09, 11, and 12 are not ready for implementers until those decisions
-> are incorporated here.
-
 This is the implementation route for the decisions indexed by
 [`issues/map.md`](../issues/map.md). It orders work; it does not reopen product choices.
 Each package should fit one implementer session and land green before its dependants begin.
@@ -173,14 +165,36 @@ Implement the frozen secrets suite with no algorithm agility:
 
 Use only the maintained Rust `age` crate's public high-level full-file APIs and strict
 `ed25519-dalek` verification. Graft owns no AEAD, KDF, nonce schedule, custom stanza, or
-key conversion. Implement `graft env init|ls|set|grant|revoke|rotate|run`; joining grants
-history, removal always rotates, and `run` injects values directly into a child process.
-Stage artifacts before ref movement: init/rotate/revoke CAS the Keyring and bundle refs as
-one batch, `set` moves only the bundle ref, and grant moves only the Keyring ref because
-it rewraps the unchanged current Environment Identity without rewriting the bundle.
-No plaintext file/materialization helper is permitted. Credential creation/export,
-Member Identity publication, and secret input rules remain blocked by the two decisions
-linked at the top of this draft.
+key conversion. Implement `graft env init|ls|set|unset|grant|revoke|rotate|run`; joining
+grants history, removal always rotates, and `run` injects values directly into a child
+process. Stage artifacts before ref movement: init/rotate/revoke CAS the Keyring and
+bundle refs as one batch, `set`/`unset` move only the bundle ref, and grant moves only the
+Keyring ref because it rewraps the unchanged current Environment Identity without
+rewriting the bundle. No plaintext file/materialization helper is permitted.
+
+Credential lifecycle (per the bootstrap decision): exactly one global credential per OS
+user at `~/.graft/credential`, lazily auto-created the first time anything needs it with
+a one-time notice printing the joint fingerprint and file location; no `keygen` verb.
+This package owns the credential library plus `graft auth whoami|export|import` —
+`export` demands explicit confirmation (`--yes` in scripts), `GRAFT_CREDENTIAL_FILE`
+overrides the path, and every prompt hard-fails immediately off-TTY with the env-var
+hint. Member Identity *publication* belongs to Package 07's `auth login`.
+
+Secret input and portability (per the portability decision): `set` takes the value via
+hidden TTY prompt (trailing newline stripped) or piped stdin (exact bytes) — a `NAME=value`
+argv form is rejected outright; the one bulk path is `set <env> --from-dotenv <file>`,
+parsing a strict literal subset (`NAME=value` lines, `#` comments, blanks) and rejecting
+everything else with line numbers. Names are POSIX-strict `[A-Za-z_][A-Za-z0-9_]*`, max
+256 chars, case-sensitive as stored but same-env case collisions rejected at `set`; no
+denylist. Values are valid UTF-8 without NUL, capped at 64 KiB per value and 1 MiB
+whole-bundle plaintext. `set` overwrites without confirmation, printing
+`created`/`updated`; `unset` writes a new bundle minus the name, no rotation. `env ls`
+lists environments plus membership; `env ls <env>` decrypts and lists names only. `run`
+inherits the parent environment and overlays secrets, secrets winning silently on
+collision (case-insensitive on Windows); it `exec`-replaces on POSIX, spawns and forwards
+the exit code on Windows. Before spawning, an atomic pre-flight validates every name and
+value against the current platform; any failure aborts the whole `run` with a nonzero
+exit listing offending names — never values — with no partial injection.
 
 Keys and plaintext use zeroizing, non-`Debug` types. Secrets must not enter errors, logs,
 argv, SQLite, temp files, or the working tree. Pin dependency versions only when they meet
@@ -194,23 +208,39 @@ no prior identity unlocks it; grant unlocks current/history bundles; revoke rota
 prevents the removed key decrypting the new Generation; remembered tips reject a valid
 signed rollback while a fresh-clone test documents TOFU; a marker secret appears only in
 the child environment and a filesystem scan finds no plaintext; loss of all credentials
-produces the explicit unrecoverable error and no escrow path.
+produces the explicit unrecoverable error and no escrow path. Input contracts hold:
+argv values, non-subset dotenv lines, case-colliding names, and over-cap values are all
+rejected at `set`; `unset` removes only the name while old bundles stay reachable; a
+bundle containing a platform-uninjectable name makes `run` abort before spawn, naming the
+key but not the value; secrets override inherited variables in the child.
 
 ## Package 07 — Sync protocol and CLI transport
 
-**Depends on:** 02, 05. Package 06 must land before the final acceptance test, but sync
-must treat its artifacts generically.
+**Depends on:** 02, 05. Sync must treat Package 06's artifacts generically, but the
+`auth`/bootstrap commands consume its credential API, so land 06 before wiring them.
 
-**Owns:** all of `crates/graft-sync/**`, `crates/graft-cli/src/commands/{clone,pull,push}.rs`,
-CLI HTTP adapter, `spec/v1/sync-protocol.md`, wire fixtures and tests.
+**Owns:** all of `crates/graft-sync/**`,
+`crates/graft-cli/src/commands/{clone,pull,push,auth,remote}.rs`, CLI HTTP adapter,
+`spec/v1/sync-protocol.md`, wire fixtures and tests.
 
 Implement version/capability handshake; length-prefixed binary `igot`/`gimme`/`file`,
 phantom, view, and typed-error frames in zstd bodies; multi-round full-set reconciliation;
 direction flags; bearer auth; and all-or-nothing expected-old ref batches. The library is
 transport-neutral. The CLI adapter uses `POST /repo/<name>/sync`, resumes at round
 boundaries, verifies received hashes and keyrings, and records pull/push in the op log.
-Remote naming, Hub selection, and bearer-token acquisition/storage must follow the
-bootstrap contract linked at the top of this draft.
+
+Implement the frozen bootstrap: `graft auth login <hub-url>` prints
+`<hub>/settings/tokens/new` and accepts a pasted PAT — no password prompt, no device
+flow; first login sets `default_hub`. PATs live keyed by hub host in `~/.graft/hubs`,
+defaults in `~/.graft/config`; `logout` deletes the local PAT and prints a revoke-in-UI
+hint, with no server call. `login` auto-publishes the Member Identity to the hub profile
+(discovery-only, never a trust anchor), printing exactly what was published;
+`--no-publish` opts out. Each repo has exactly one remote — recorded in the repo's
+`.graft/` by `clone`, managed by `graft remote [set <url>]`; no named multi-remotes and
+no `origin` vocabulary. `graft push --create <name>` creates the hub repo via the
+internal REST API, targeting `default_hub` unless a full URL is given. `GRAFT_TOKEN`
+overrides the stored PAT; when stdin is not a TTY, every prompt hard-fails immediately
+with the env-var hint.
 
 Support advertised `max_artifact_bytes`: preflight every outgoing artifact before sending
 any payload or ref update. Do not add clusters, lazy blobs, deltas, or artifact-specific
@@ -220,7 +250,10 @@ sync logic.
 multiple rounds; interruption leaves resumable phantoms and no corrupt object; unknown
 capabilities are ignored; hash mismatch fails; stale ref CAS leaves all refs unchanged;
 oversize preflight sends zero `file` frames; clone against an empty store yields all
-artifacts/views and a fresh working Change.
+artifacts/views and a fresh working Change. Bootstrap contracts hold: `login` stores the
+PAT and publishes the identity (or honors `--no-publish`), `logout` is purely local,
+`push --create` targets `default_hub`, `GRAFT_TOKEN` wins over the stored PAT, and every
+prompt fails fast off-TTY.
 
 ## Package 08 — Deterministic Git import
 
@@ -251,7 +284,8 @@ Docker/release wrapper owned only when this package lands.
 Implement one axum process and data dir, `hub.db`, one core-store DB per repo, config
 flags/env twins, first-user-admin registration, open/invite registration, argon2 passwords,
 cookie sessions, named hashed PATs with `ro|rw`, Member Identity profiles, personal repos,
-collaborators, and public/private read rules. Serve sync by adapting the HTTP-neutral
+collaborators, and public/private read rules — including the internal endpoints
+`auth login` publication and `push --create` repo creation call. Serve sync by adapting the HTTP-neutral
 engine; anonymous public pull works, all writes authenticate, and unauthorized private
 repos return 404. Hub stores secret artifacts opaquely and never gets an env key.
 
@@ -296,9 +330,11 @@ fake data into production.
 Build the ratified GitHub-shaped frame: repo/files and log toggle, Proposal conversation
 and change-by-change review with revision/interdiff controls, land verdict/panel, minimal
 issues, metadata-only Environments, and the minimum account/repository administration
-needed to register, create/revoke PATs, create repos, and manage collaborators. The exact
-credential-publication and connection setup follows the bootstrap decision linked at the
-top of this draft. Preserve Graft vocabulary and visual distinction:
+needed to register, create/revoke PATs, create repos, and manage collaborators.
+`/settings/tokens/new` must exist at exactly that path — it is the URL `graft auth login`
+prints. Profiles display the published Member Identity and joint fingerprint as
+discovery-only data; publication itself is CLI-driven, and the UI never initiates it.
+Preserve Graft vocabulary and visual distinction:
 letter/violet Changes, hex/neutral Revisions, land, keyring, generation. All environment
 mutation remains CLI-only. Build static assets into the Rust binary; no SSR or second
 server.
@@ -321,12 +357,12 @@ CLI and Hub binaries, loopback HTTP, real SQLite files, temp directories, and no
 core/sync/auth boundary:
 
 1. Start an open-registration Hub. Alice registers first (admin), Bob registers, both
-   obtain portable User Credentials and publish their joint Member Identities through the
-   frozen bootstrap flow, and both create PATs. Alice creates a private repo and grants
-   Bob write.
-2. Alice clones or connects the repo through the frozen remote/auth flow, snaps seed code
-   onto `main`, initializes `dev`, supplies a unique marker secret through the frozen
-   non-argv input flow, and pushes.
+   create PATs and run paste-PAT `graft auth login` — lazily auto-creating their portable
+   User Credentials and auto-publishing their joint Member Identities. Alice creates a
+   private repo and grants Bob write.
+2. Alice clones or connects the repo through the single-remote flow, snaps seed code
+   onto `main`, initializes `dev`, supplies a unique marker secret via `graft env set`
+   over piped stdin (never argv), and pushes.
 3. Bob clones. He has code but cannot decrypt `dev`. Alice grants Bob after verifying the
    displayed fingerprint and pushes the new Keyring ref; Bob pulls and proves
    `graft env run dev -- <probe>` receives the marker while the working tree does not.
@@ -353,7 +389,8 @@ goldens are committed and the repository contains no ignored failing tests.
 ## Handoff order
 
 Use the numbered order as the default merge order. After Package 02, Packages 03 and 07
-may proceed in parallel because their owned paths are disjoint. After Package 05,
+may proceed in parallel because their owned paths are disjoint — though Package 07's
+`auth`/bootstrap commands wait on Package 06's credential API. After Package 05,
 Packages 06 and 08 may proceed in parallel. Packages 09–12 are intentionally serial: they
 join the core, protocol, CLI, and product surfaces where parallel ownership would create
 more integration work than it saves.
