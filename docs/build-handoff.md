@@ -1,8 +1,12 @@
 # Graft v1 build handoff
 
-> **Draft:** Package 06 is blocked on
-> [Freeze the secrets cryptographic contracts](../issues/020-freeze-secrets-crypto-contracts.md).
-> Do not begin implementation until that resolution replaces its open crypto choices.
+> **Draft:** the final handoff audit surfaced two user-flow contracts that the locked
+> architecture does not yet answer:
+> [Decide credential, Hub, and remote bootstrap](../issues/021-credential-hub-remote-bootstrap.md)
+> and
+> [Freeze secret input and process-environment portability](../issues/022-secret-input-portability.md).
+> Packages 06, 07, 09, 11, and 12 are not ready for implementers until those decisions
+> are incorporated here.
 
 This is the implementation route for the decisions indexed by
 [`issues/map.md`](../issues/map.md). It orders work; it does not reopen product choices.
@@ -10,7 +14,7 @@ Each package should fit one implementer session and land green before its depend
 
 ## Shipping shape
 
-The workspace has four production boundaries:
+The workspace has five production ownership boundaries:
 
 ```text
 graft-cli ───────> graft-core <─────── graft-hub <──── web (embedded assets)
@@ -31,11 +35,11 @@ Arrows point from a consumer to its dependency.
 - `web`: internal React/Tailwind SPA. It consumes the Hub's internal `/api/` surface.
 - `graft-e2e`: black-box v1 acceptance tests. It is never a production dependency.
 
-The secrets decision is later and more specific than the object-model ticket: `Keyring`
+The secrets decisions are later and more specific than the object-model ticket: `Keyring`
 is therefore a fifth canonical artifact kind beside Blob, Tree, Revision, and
-SecretBundle. It is immutable, content-addressed, opaque to the Hub, and selected by
-`secrets/keyring`; it is not a hub row or ref payload. Its signing contract remains blocked
-on the decision linked above.
+SecretBundle. It is immutable, content-addressed, opaque to the Hub, selected by
+`secrets/keyring`, and signed by a Member's independent Ed25519 key. It is not a hub row
+or ref payload.
 
 ## Shared ownership rules
 
@@ -75,11 +79,13 @@ the web typecheck/build all run in CI.
 artifact/store migrations and tests, `spec/v1/artifact-format.md`, artifact golden
 fixtures.
 
-Implement BLAKE3-256 IDs; frozen codecs for Blob, Tree, Revision, SecretBundle, and
-Keyring; the compact binary tree-entry encoding; opaque preservation of unknown artifact
-kinds; and the per-repo SQLite bag. Add derived indexes, refs, phantoms, atomic CAS ref
-batches, root calculation, garbage collection, and `rebuild` as library operations.
-Compression/delta choices remain invisible behind the store API.
+Implement BLAKE3-256 IDs; the common frozen artifact envelope and codecs for Blob, Tree,
+and Revision; the compact binary tree-entry encoding; opaque preservation of unknown
+artifact kinds; and the per-repo SQLite bag. Reserve SecretBundle and Keyring kind IDs,
+but Package 06 owns their canonical payload codecs and vectors. Add derived indexes,
+refs, phantoms, atomic CAS ref batches, root calculation, garbage collection, and
+`rebuild` as library operations. Compression/delta choices remain invisible behind the
+store API.
 
 Old secret bundles and keyrings remain reachable history under the grow-only/secrets
 rules. Proposal refs are ordinary GC roots. Local repositories do not enforce an artifact
@@ -151,22 +157,44 @@ unchanged; `--help` is snapshot-tested so nouns do not drift.
 **Owns:** `crates/graft-core/src/secrets/**`, `crates/graft-cli/src/commands/env/**`,
 `spec/v1/secrets-format.md`, secret/keyring golden fixtures and tests.
 
-Implement per-user age-compatible X25519 identity, signed whole-repo Keyring, per-env
-key generations and recipient wraps, whole-env SecretBundle encryption, and atomic
-keyring+bundle ref moves. Implement `graft env init|ls|set|grant|revoke|rotate|run`.
-Joining grants history; removal always rotates; `run` injects values directly into a
-child process. No plaintext file/materialization helper is permitted.
+Implement the frozen secrets suite with no algorithm agility:
 
-The normative format must name the audited AEAD/KDF/signature constructions and byte
-domains; there may be no home-grown cryptographic primitive. Keys use restrictive file
-permissions and secrets must not enter errors, logs, argv, SQLite, temp files, or the
-working tree.
+- one versioned, portable User Credential containing independently generated native age
+  X25519 and Ed25519 secrets, written atomically with owner-only permissions;
+- a public Member Identity containing the age recipient and Ed25519 verifying key, with
+  its exact domain-separated BLAKE3 fingerprint;
+- pure Ed25519 signatures over the exact canonical unsigned Keyring transcript, strict
+  verification against the signer in the predecessor Keyring, and genesis self-signing;
+- one fresh native age X25519 Environment Identity per Generation; complete unarmored
+  binary age v1 files for active-member wraps, backward generation-history links, and
+  whole-environment SecretBundles; and
+- remembered Keyring and secrets-ref tips that reject rollback and broken predecessor
+  chains while stating the fresh-clone TOFU limit honestly.
 
-**Verify:** golden vectors decrypt across independently-created readers; tampered bundle,
-keyring, signature, or ref chain fails closed; grant unlocks current/history bundles;
-revoke rotates and prevents the removed key decrypting the new generation; a marker
-secret appears only in the child environment and a filesystem scan finds no plaintext;
-loss of all keys produces the explicit unrecoverable error and no escrow path.
+Use only the maintained Rust `age` crate's public high-level full-file APIs and strict
+`ed25519-dalek` verification. Graft owns no AEAD, KDF, nonce schedule, custom stanza, or
+key conversion. Implement `graft env init|ls|set|grant|revoke|rotate|run`; joining grants
+history, removal always rotates, and `run` injects values directly into a child process.
+Stage artifacts before ref movement: init/rotate/revoke CAS the Keyring and bundle refs as
+one batch, `set` moves only the bundle ref, and grant moves only the Keyring ref because
+it rewraps the unchanged current Environment Identity without rewriting the bundle.
+No plaintext file/materialization helper is permitted. Credential creation/export,
+Member Identity publication, and secret input rules remain blocked by the two decisions
+linked at the top of this draft.
+
+Keys and plaintext use zeroizing, non-`Debug` types. Secrets must not enter errors, logs,
+argv, SQLite, temp files, or the working tree. Pin dependency versions only when they meet
+the repo's minimum-release-age policy.
+
+**Verify:** canonical/golden vectors include independent Go-age or rage interoperability;
+field reordering, alternate encodings, duplicate names, signer/predecessor substitution,
+cross-domain replay, weak Ed25519 keys, wrong inner routing, truncation, and age corruption
+all fail before plaintext release; a current Generation unlocks every prior identity but
+no prior identity unlocks it; grant unlocks current/history bundles; revoke rotates and
+prevents the removed key decrypting the new Generation; remembered tips reject a valid
+signed rollback while a fresh-clone test documents TOFU; a marker secret appears only in
+the child environment and a filesystem scan finds no plaintext; loss of all credentials
+produces the explicit unrecoverable error and no escrow path.
 
 ## Package 07 — Sync protocol and CLI transport
 
@@ -181,6 +209,8 @@ phantom, view, and typed-error frames in zstd bodies; multi-round full-set recon
 direction flags; bearer auth; and all-or-nothing expected-old ref batches. The library is
 transport-neutral. The CLI adapter uses `POST /repo/<name>/sync`, resumes at round
 boundaries, verifies received hashes and keyrings, and records pull/push in the op log.
+Remote naming, Hub selection, and bearer-token acquisition/storage must follow the
+bootstrap contract linked at the top of this draft.
 
 Support advertised `max_artifact_bytes`: preflight every outgoing artifact before sending
 any payload or ref update. Do not add clusters, lazy blobs, deltas, or artifact-specific
@@ -220,13 +250,14 @@ Docker/release wrapper owned only when this package lands.
 
 Implement one axum process and data dir, `hub.db`, one core-store DB per repo, config
 flags/env twins, first-user-admin registration, open/invite registration, argon2 passwords,
-cookie sessions, named hashed PATs with `ro|rw`, user public-key profiles, personal repos,
+cookie sessions, named hashed PATs with `ro|rw`, Member Identity profiles, personal repos,
 collaborators, and public/private read rules. Serve sync by adapting the HTTP-neutral
 engine; anonymous public pull works, all writes authenticate, and unauthorized private
 repos return 404. Hub stores secret artifacts opaquely and never gets an env key.
 
 **Verify:** restart preserves state; first user alone becomes admin under concurrency;
-PAT/session revoke is immediate; read/write/owner matrix is exhaustive; private existence
+PAT/session revoke is immediate; Member Identity publication never makes the Hub a trust
+anchor; read/write/owner matrix is exhaustive; private existence
 does not leak; public anonymous clone succeeds; sync uses the same repo DB API as local
 core; copying the stopped data dir restores a working Hub; configured size caps are
 advertised and enforced before artifact insertion.
@@ -264,7 +295,10 @@ fake data into production.
 
 Build the ratified GitHub-shaped frame: repo/files and log toggle, Proposal conversation
 and change-by-change review with revision/interdiff controls, land verdict/panel, minimal
-issues, and metadata-only Environments. Preserve Graft vocabulary and visual distinction:
+issues, metadata-only Environments, and the minimum account/repository administration
+needed to register, create/revoke PATs, create repos, and manage collaborators. The exact
+credential-publication and connection setup follows the bootstrap decision linked at the
+top of this draft. Preserve Graft vocabulary and visual distinction:
 letter/violet Changes, hex/neutral Revisions, land, keyring, generation. All environment
 mutation remains CLI-only. Build static assets into the Rust binary; no SSR or second
 server.
@@ -286,12 +320,15 @@ Add one deterministic black-box acceptance test, `v1_journey`, using release-equ
 CLI and Hub binaries, loopback HTTP, real SQLite files, temp directories, and no mocked
 core/sync/auth boundary:
 
-1. Start an open-registration Hub. Alice registers first (admin), Bob registers with an
-   X25519 public key; Alice creates a private repo, grants Bob write, and both create PATs.
-2. Alice initializes, snaps seed code onto `main`, initializes `dev`, sets a unique marker
-   secret, and pushes.
+1. Start an open-registration Hub. Alice registers first (admin), Bob registers, both
+   obtain portable User Credentials and publish their joint Member Identities through the
+   frozen bootstrap flow, and both create PATs. Alice creates a private repo and grants
+   Bob write.
+2. Alice clones or connects the repo through the frozen remote/auth flow, snaps seed code
+   onto `main`, initializes `dev`, supplies a unique marker secret through the frozen
+   non-argv input flow, and pushes.
 3. Bob clones. He has code but cannot decrypt `dev`. Alice grants Bob after verifying the
-   displayed fingerprint and pushes the atomic keyring+bundle refs; Bob pulls and proves
+   displayed fingerprint and pushes the new Keyring ref; Bob pulls and proves
    `graft env run dev -- <probe>` receives the marker while the working tree does not.
 4. Bob branches, edits a file, snaps two Changes, pushes, and runs `graft propose` against
    `main`. The Hub reports the ordered two-change stack and holds its internal proposal ref.
