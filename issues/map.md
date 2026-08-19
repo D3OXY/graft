@@ -40,27 +40,14 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [Scope git interop for v1](014-git-interop-scope.md) — one-way `graft import`: full history, deterministic (change IDs derived from git hashes so independent imports converge), one-shot, via `git fast-export` shell-out; export deferred with a spec-stated lock-in guarantee; colocation out.
 - [Prototype the hub UI](015-hub-ui-prototype.md) — variant A ratified: GitHub-shaped frame carrying graft vocabulary — stack strip, change-by-change review with interdiff jumps, land panel that refuses conflicts, metadata-only env screen. Asset in `prototype/hub-ui/` (branch `prototype/hub-ui`).
 - [Decide hub architecture](016-hub-architecture.md) — axum binary embedding the core; per-repo core-store db files + one hub.db; sessions/PATs with first-user-admin and open|invite registration; personal repos + collaborators, anonymous read of public repos; minimal issues (title/body/comments/state) decided here; SPA embedded in the binary, internal REST; single binary + one data dir to deploy; stays "Graft Hub", no separate name.
+- [Decide the large-file strategy for v1](018-large-file-strategy.md) — raw whole-file blobs with bounded-memory streaming; no format threshold or lazy fetch; optional advertised hub cap; chunking, partial clone, wire deltas, and LFS deferred.
+- [Research an auditable secrets cryptographic contract](019-research-secrets-crypto-contracts.md) — X25519 cannot authenticate writers; recommend independent age X25519 + Ed25519 keys and complete age v1 files for member wraps, generation history, and bundles.
+- [Freeze the secrets cryptographic contracts](020-freeze-secrets-crypto-contracts.md) — one portable dual-key credential; pure Ed25519-signed canonical Keyrings; native age identities and complete age v1 files end-to-end; remembered-tip rollback resistance with fresh-clone TOFU.
 
 ## Not yet specified
 
-- Substrate growth path: how auto-snapshotting evolves from CLI command → watcher daemon
-  → filesystem-level capture. The object model's doors are now fixed (op-log graduation,
-  new artifact types, frozen-format law); what remains foggy is the capture pipeline itself.
-- Org/team structure and fine-grained roles beyond v1's minimal access control. The
-  secrets model has now fixed what "access" means (env membership, crypto-enforced; any
-  member can grant/rotate); what stays foggy is hub-side org/team/role structure layered
-  on top — post-v1, revisit alongside hosted multi-tenant.
-- Hosted multi-tenant path (isolation, billing) — post-v1. The hub architecture ticket
-  paid its debt here: nothing in v1 forecloses it (per-repo db files make tenant isolation
-  a directory-layout question).
-- Auth growth: OIDC/OAuth, SMTP-backed flows (verification, reset), fine-grained PAT
-  scoping, and a public/versioned REST API — all post-v1; the hub architecture resolution
-  keeps each door open (scope column, internal-only API stance).
-- Federation between hubs. CLI↔hub versioning is now decided (capability handshake, sync
-  ticket); hub↔hub sync and identity across hubs stay foggy.
-- Post-v1 review depth: fork-based contribution (change IDs are globally unique, so a
-  forked change is the *same* change), prefix-landing of stacks, and proposals-as-artifacts
-  offline review. Proposal semantics fixed the v1 floor; these deepen it later.
+None. The remaining in-scope questions are sharp enough to be active tickets; future
+growth below is outside this map.
 
 ## Out of scope
 
@@ -71,5 +58,13 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
   decision; the spec carries the export guarantee, and nothing in v1 builds toward a
   bridge.
 - Replacing the OS filesystem itself — the substrate bet stays inside the repo model for v1.
-- SaaS operations (billing, multi-tenant isolation) — see Not yet specified; nothing in v1
-  builds for it.
+- SaaS operations (billing, multi-tenant isolation) — nothing in v1 builds for them.
+- Watcher-daemon and filesystem-level capture — post-v1 substrate growth; v1 stops at
+  command-boundary auto-snapshotting while preserving the object-model extension points.
+- Organizations, teams, and fine-grained roles — v1 has personal repos, collaborators,
+  repo read/write, and crypto-enforced Environment membership.
+- OAuth/OIDC, SMTP flows, fine-grained PAT scopes, and a stable public REST API — v1 keeps
+  auth local and the JSON API internal.
+- Hub federation and cross-hub identity — v1 specifies CLI↔Hub sync only.
+- Fork contribution, prefix landing, proposals-as-artifacts, and offline review — v1's
+  Proposal floor is write-access-only and lands whole stacks.

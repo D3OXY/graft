@@ -20,14 +20,23 @@
   Not synced in v1.
 - **Secret**: a team-shared value (env var etc.) stored E2E-encrypted in a Secret Bundle;
   the hub syncs ciphertext and never sees plaintext.
+- **User Credential**: one portable user identity containing independent encryption and
+  signing capabilities. Its public Member identity covers both, so encryption access and
+  update authority cannot be substituted independently.
+- **Member Identity**: the public projection of a User Credential: its encryption
+  recipient, signing authority, and joint fingerprint. A Hub profile can advertise it for
+  discovery, but trust comes from the Keyring and out-of-band fingerprint verification.
 - **Secret Bundle**: the artifact type carrying secrets — the entire value set of one
   Environment at one Generation, names and values encrypted, plus minimal plaintext
   routing metadata. Replaced whole on any change.
 - **Environment**: the access boundary for secrets (e.g. dev/staging/prod). Membership in
   an Environment is what "having access" means; created on demand, not from a fixed set.
+- **Environment Identity**: the native age recipient identity belonging to one Environment
+  Generation. Active members share it; complete age files wrap it to User Credentials and
+  encrypt Secret Bundles and backward history links.
 - **Keyring**: the single per-repo artifact recording members' public keys and each
   Environment's wrapped keys; every update is signed by an existing member.
-- **Generation**: one era of an Environment's key. Rotation starts a new Generation;
+- **Generation**: one era of an Environment Identity. Rotation starts a new Generation;
   removing a member always rotates. Generations chain, so joining grants history.
 - **Phantom**: an artifact hash a party knows of but whose content it doesn't hold. Drives
   sync rounds (each side requests the phantoms the other can fill) and is the latent basis
