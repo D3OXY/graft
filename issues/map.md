@@ -37,6 +37,7 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [Design the CLI surface](011-cli-surface.md) — ratified via day-transcript prototype: no-staging working change with snap/amend/edit verbs; auto-advancing branches; merge-never-fails first-class conflicts; universal op-log undo; secrets under `graft env` (`run --` the only plaintext path); clone/pull/push + provisional propose; letter change IDs vs hex revisions. Asset on `prototype/cli-surface`.
 - [Decide the sync protocol](012-sync-protocol.md) — HTTPS single-endpoint set reconciliation (igot/gimme/file + phantoms; clusters deferred), binary frames + zstd; versioned view layer with CAS all-or-nothing ref batches; bearer tokens decoupled from secrets identity; version+capability handshake; no wire deltas in v1.
 - [Decide proposal semantics](013-proposal-semantics.md) — Proposal (name final) = stack of changes reviewed change-by-change, landed atomically by hub-computed rebase-and-land (conflicted results refused; hub embeds the Rust core); comments/threads/approve floor; automatic amend tracking with per-revision anchors + interdiffs; `proposals/<id>` refs as GC roots; write-access-only, hub-side rows.
+- [Scope git interop for v1](014-git-interop-scope.md) — one-way `graft import`: full history, deterministic (change IDs derived from git hashes so independent imports converge), one-shot, via `git fast-export` shell-out; export deferred with a spec-stated lock-in guarantee; colocation out.
 
 ## Not yet specified
 
@@ -58,8 +59,11 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 ## Out of scope
 
 - CI / actions and runners — explicitly deferred by the destination.
-- Git feature parity — Graft competes on model, not checklist. (Git *interop* is in scope
-  as a scoping ticket.)
+- Git feature parity — Graft competes on model, not checklist. (Git *interop* was scoped
+  by [Scope git interop for v1](014-git-interop-scope.md).)
+- Graft→git export and bidirectional colocation — deferred post-v1 by the interop
+  decision; the spec carries the export guarantee, and nothing in v1 builds toward a
+  bridge.
 - Replacing the OS filesystem itself — the substrate bet stays inside the repo model for v1.
 - SaaS operations (billing, multi-tenant isolation) — see Not yet specified; nothing in v1
   builds for it.
