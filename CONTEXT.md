@@ -32,5 +32,10 @@
 - **Phantom**: an artifact hash a party knows of but whose content it doesn't hold. Drives
   sync rounds (each side requests the phantoms the other can fill) and is the latent basis
   for shallow/partial clone.
-- **Proposal** *(provisional)*: the PR-equivalent; semantics and final name pending its
-  ticket.
+- **Proposal**: the unit of review — the ordered stack of Changes between a target branch
+  and a proposed tip. Opened and landed as one thing; reviewed change-by-change. Lives on
+  the hub.
+- **Land**: accepting a Proposal — the stack is rebased onto the target and the target
+  fast-forwards. A Proposal whose rebased result is conflicted cannot land.
+- **Interdiff**: the diff between two Revisions of the same Change — how a reviewer sees
+  what an amend actually changed.

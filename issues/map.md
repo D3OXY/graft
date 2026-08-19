@@ -36,6 +36,7 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [Decide the secrets model](010-secrets-model.md) — per-user X25519 keys; env = only access boundary (env key + generations, age-stanza wraps); bundle = whole-env snapshot on a `secrets/<env>` ref, parallel to code history; single member-signed keyring, TOFU root; removal forces rotation, no escrow; crypto-only enforcement (hub sees opaque bytes + metadata); revocation honestly future-only; plaintext never touches the tree.
 - [Design the CLI surface](011-cli-surface.md) — ratified via day-transcript prototype: no-staging working change with snap/amend/edit verbs; auto-advancing branches; merge-never-fails first-class conflicts; universal op-log undo; secrets under `graft env` (`run --` the only plaintext path); clone/pull/push + provisional propose; letter change IDs vs hex revisions. Asset on `prototype/cli-surface`.
 - [Decide the sync protocol](012-sync-protocol.md) — HTTPS single-endpoint set reconciliation (igot/gimme/file + phantoms; clusters deferred), binary frames + zstd; versioned view layer with CAS all-or-nothing ref batches; bearer tokens decoupled from secrets identity; version+capability handshake; no wire deltas in v1.
+- [Decide proposal semantics](013-proposal-semantics.md) — Proposal (name final) = stack of changes reviewed change-by-change, landed atomically by hub-computed rebase-and-land (conflicted results refused; hub embeds the Rust core); comments/threads/approve floor; automatic amend tracking with per-revision anchors + interdiffs; `proposals/<id>` refs as GC roots; write-access-only, hub-side rows.
 
 ## Not yet specified
 
@@ -50,6 +51,9 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
   should note anything that would foreclose it.
 - Federation between hubs. CLI↔hub versioning is now decided (capability handshake, sync
   ticket); hub↔hub sync and identity across hubs stay foggy.
+- Post-v1 review depth: fork-based contribution (change IDs are globally unique, so a
+  forked change is the *same* change), prefix-landing of stacks, and proposals-as-artifacts
+  offline review. Proposal semantics fixed the v1 floor; these deepen it later.
 
 ## Out of scope
 
