@@ -38,6 +38,7 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [Decide the sync protocol](012-sync-protocol.md) — HTTPS single-endpoint set reconciliation (igot/gimme/file + phantoms; clusters deferred), binary frames + zstd; versioned view layer with CAS all-or-nothing ref batches; bearer tokens decoupled from secrets identity; version+capability handshake; no wire deltas in v1.
 - [Decide proposal semantics](013-proposal-semantics.md) — Proposal (name final) = stack of changes reviewed change-by-change, landed atomically by hub-computed rebase-and-land (conflicted results refused; hub embeds the Rust core); comments/threads/approve floor; automatic amend tracking with per-revision anchors + interdiffs; `proposals/<id>` refs as GC roots; write-access-only, hub-side rows.
 - [Scope git interop for v1](014-git-interop-scope.md) — one-way `graft import`: full history, deterministic (change IDs derived from git hashes so independent imports converge), one-shot, via `git fast-export` shell-out; export deferred with a spec-stated lock-in guarantee; colocation out.
+- [Prototype the hub UI](015-hub-ui-prototype.md) — variant A ratified: GitHub-shaped frame carrying graft vocabulary — stack strip, change-by-change review with interdiff jumps, land panel that refuses conflicts, metadata-only env screen. Asset in `prototype/hub-ui/` (branch `prototype/hub-ui`).
 
 ## Not yet specified
 
