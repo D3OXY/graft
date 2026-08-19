@@ -44,6 +44,7 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [Research an auditable secrets cryptographic contract](019-research-secrets-crypto-contracts.md) — X25519 cannot authenticate writers; recommend independent age X25519 + Ed25519 keys and complete age v1 files for member wraps, generation history, and bundles.
 - [Freeze the secrets cryptographic contracts](020-freeze-secrets-crypto-contracts.md) — one portable dual-key credential; pure Ed25519-signed canonical Keyrings; native age identities and complete age v1 files end-to-end; remembered-tip rollback resistance with fresh-clone TOFU.
 - [Decide credential, Hub, and remote bootstrap](021-credential-hub-remote-bootstrap.md) — one `graft auth` namespace (login/logout/whoami/export/import); lazy credential auto-create, one global identity, `~/.graft/` storage; paste-PAT login with auto-published Member Identity; single remote per repo + `push --create` via internal API; `GRAFT_TOKEN`/`GRAFT_CREDENTIAL_FILE` for CI, prompts hard-fail off-TTY.
+- [Freeze secret input and process-environment portability](022-secret-input-portability.md) — values enter via prompt/stdin or strict dotenv import, never argv; POSIX-strict names (case collisions rejected), UTF-8 no-NUL values with size caps; `unset` added to the verb surface; `run` inherits + overlays with secrets winning; atomic pre-flight aborts on any uninjectable value.
 
 ## Not yet specified
 

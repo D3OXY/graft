@@ -37,7 +37,9 @@ status flips the file to "resolved" once markers are gone — `snap` seals it.
 **Undo.** `graft undo` is op-log-powered and covers every operation, merges and pulls
 included.
 
-**Secrets.** One noun: `graft env` — `init`/`ls`/`set`/`grant`/`revoke`/`rotate`/`run`.
+**Secrets.** One noun: `graft env` — `init`/`ls`/`set`/`grant`/`revoke`/`rotate`/`run`
+(`unset` added later by ticket 22, which also froze `set`/`run` input and portability
+contracts).
 `env run <env> -- <cmd>` is the only plaintext path (process env injection). `grant`
 prints the fetched key's fingerprint with an out-of-band-verify nag; `revoke` forces
 rotation and prints the honest "they keep what they synced — rotate the real credential"
