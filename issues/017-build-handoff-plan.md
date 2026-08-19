@@ -3,7 +3,7 @@ id: 17
 title: "Write the build handoff plan"
 type: task
 status: open
-assignee:
+assignee: d3oxy
 blocked-by: [10, 11, 14, 15, 16, 18, 20, 21, 22]
 ---
 
