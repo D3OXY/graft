@@ -29,5 +29,8 @@
   Environment's wrapped keys; every update is signed by an existing member.
 - **Generation**: one era of an Environment's key. Rotation starts a new Generation;
   removing a member always rotates. Generations chain, so joining grants history.
+- **Phantom**: an artifact hash a party knows of but whose content it doesn't hold. Drives
+  sync rounds (each side requests the phantoms the other can fill) and is the latent basis
+  for shallow/partial clone.
 - **Proposal** *(provisional)*: the PR-equivalent; semantics and final name pending its
   ticket.

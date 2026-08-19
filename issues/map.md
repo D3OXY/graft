@@ -35,6 +35,7 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [Decide the object model](009-object-model.md) — grow-only bag of BLAKE3-256 artifacts (blob/tree/revision/secret-bundle, text cards + binary tree entries); Change (stable random ID) vs Revision (immutable artifact) split; jj tree-list conflicts; local-only op log; SQLite storage with rebuildable derived tables; frozen-format evolution law.
 - [Decide the secrets model](010-secrets-model.md) — per-user X25519 keys; env = only access boundary (env key + generations, age-stanza wraps); bundle = whole-env snapshot on a `secrets/<env>` ref, parallel to code history; single member-signed keyring, TOFU root; removal forces rotation, no escrow; crypto-only enforcement (hub sees opaque bytes + metadata); revocation honestly future-only; plaintext never touches the tree.
 - [Design the CLI surface](011-cli-surface.md) — ratified via day-transcript prototype: no-staging working change with snap/amend/edit verbs; auto-advancing branches; merge-never-fails first-class conflicts; universal op-log undo; secrets under `graft env` (`run --` the only plaintext path); clone/pull/push + provisional propose; letter change IDs vs hex revisions. Asset on `prototype/cli-surface`.
+- [Decide the sync protocol](012-sync-protocol.md) — HTTPS single-endpoint set reconciliation (igot/gimme/file + phantoms; clusters deferred), binary frames + zstd; versioned view layer with CAS all-or-nothing ref batches; bearer tokens decoupled from secrets identity; version+capability handshake; no wire deltas in v1.
 
 ## Not yet specified
 
@@ -47,7 +48,8 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
   on top — post-v1, revisit alongside hosted multi-tenant.
 - Hosted multi-tenant path (isolation, billing) — post-v1, but the hub architecture ticket
   should note anything that would foreclose it.
-- Protocol versioning / federation between hubs.
+- Federation between hubs. CLI↔hub versioning is now decided (capability handshake, sync
+  ticket); hub↔hub sync and identity across hubs stay foggy.
 
 ## Out of scope
 
