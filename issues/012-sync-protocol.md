@@ -3,7 +3,7 @@ id: 12
 title: "Decide the sync protocol"
 type: grilling
 status: open
-assignee:
+assignee: d3oxy
 blocked-by: [9]
 ---
 
