@@ -43,6 +43,7 @@ plan for implementer sessions. Planning only: this map decides; it does not buil
 - [Decide the large-file strategy for v1](018-large-file-strategy.md) — raw whole-file blobs with bounded-memory streaming; no format threshold or lazy fetch; optional advertised hub cap; chunking, partial clone, wire deltas, and LFS deferred.
 - [Research an auditable secrets cryptographic contract](019-research-secrets-crypto-contracts.md) — X25519 cannot authenticate writers; recommend independent age X25519 + Ed25519 keys and complete age v1 files for member wraps, generation history, and bundles.
 - [Freeze the secrets cryptographic contracts](020-freeze-secrets-crypto-contracts.md) — one portable dual-key credential; pure Ed25519-signed canonical Keyrings; native age identities and complete age v1 files end-to-end; remembered-tip rollback resistance with fresh-clone TOFU.
+- [Decide credential, Hub, and remote bootstrap](021-credential-hub-remote-bootstrap.md) — one `graft auth` namespace (login/logout/whoami/export/import); lazy credential auto-create, one global identity, `~/.graft/` storage; paste-PAT login with auto-published Member Identity; single remote per repo + `push --create` via internal API; `GRAFT_TOKEN`/`GRAFT_CREDENTIAL_FILE` for CI, prompts hard-fail off-TTY.
 
 ## Not yet specified
 
