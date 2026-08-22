@@ -23,6 +23,8 @@ type ProposalDetail = {
 };
 type Issue = { number: number; title: string; state: string; author_id: number };
 type IssueDetail = { issue: Issue & { body: string }; comments: { id: number; author_id: number; body: string }[] };
+type TokenRecord = { id: number; name: string; mode: string; revoked: boolean };
+type RepoRecord = { name: string; owner: string; public: boolean };
 
 const cx = (...values: (string | false | undefined)[]) => values.filter(Boolean).join(" ");
 const short = (value: string, length = 8) => value.slice(0, length);
@@ -146,7 +148,7 @@ function App() {
           {!loading && tab === "environments" && <EnvironmentView browse={browse} />}
           {!loading && tab === "proposals" && <ProposalView repo={repo} token={token} list={proposals} selected={proposalId} detail={proposal} onSelect={setProposalId} onChanged={changed} />}
           {!loading && tab === "issues" && <IssueView repo={repo} token={token} list={issues} selected={issueNumber} detail={issue} onSelect={setIssueNumber} onChanged={changed} />}
-          {!loading && tab === "account" && <AccountView token={token} onToken={saveToken} />}
+          {!loading && tab === "account" && <AccountView token={token} onToken={saveToken} repo={repo} onRepo={setRepo} />}
         </main>
       </div>
     </div>
@@ -241,9 +243,170 @@ function NewIssue({ repo, token, onCreated }: { repo: string; token: string; onC
   if (!open) return <button className="primary-button" onClick={() => setOpen(true)}>New issue</button>;
   return <form className="inline-create" onSubmit={(event) => void submit(event)}><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Issue title" /><input value={body} onChange={(event) => setBody(event.target.value)} placeholder="Short description" /><button className="primary-button">Create</button><button type="button" className="ghost-button" onClick={() => setOpen(false)}>Cancel</button></form>;
 }
-function AccountView({ token, onToken }: { token: string; onToken: (value: string) => void }) {
+function AccountView({ token, onToken, repo, onRepo }: { token: string; onToken: (value: string) => void; repo: string; onRepo: (value: string) => void }) {
   const [value, setValue] = useState(token);
-  return <section className="account-grid"><div className="panel account-panel"><span className="eyebrow">local browser session</span><h2>Connect a PAT</h2><p className="subtle">The CLI owns credential creation and Member Identity publication. The browser only keeps this PAT in local storage for internal API calls.</p><label htmlFor="pat">Personal access token</label><input id="pat" type="password" value={value} onChange={(event) => setValue(event.target.value)} placeholder="graft_pat_…" /><div className="account-actions"><button className="primary-button" onClick={() => onToken(value)}>Save locally</button><button className="ghost-button" onClick={() => { setValue(""); onToken(""); }}>Forget</button></div></div><div className="panel account-panel accent-panel"><span className="eyebrow">bootstrap</span><h2>CLI-first identity</h2><p>Run <code>graft auth login &lt;hub-url&gt;</code> to paste a named PAT and publish your discovery-only Member Identity. Encrypted environment mutation never happens here.</p><a className="text-link" href="/settings/tokens/new">Open token settings ↗</a></div></section>;
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [tokenName, setTokenName] = useState("browser");
+  const [tokenMode, setTokenMode] = useState("rw");
+  const [newToken, setNewToken] = useState("");
+  const [activeTokenId, setActiveTokenId] = useState<number | null>(null);
+  const [tokens, setTokens] = useState<TokenRecord[]>([]);
+  const [repos, setRepos] = useState<RepoRecord[]>([]);
+  const [repoName, setRepoName] = useState("");
+  const [isPublic, setIsPublic] = useState(false);
+  const [collaborator, setCollaborator] = useState("");
+  const [collaboratorMode, setCollaboratorMode] = useState("rw");
+  const [sessionActive, setSessionActive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const authenticated = Boolean(token) || sessionActive;
+
+  const loadAdministration = async () => {
+    if (!authenticated) {
+      setTokens([]);
+      setRepos([]);
+      return;
+    }
+    try {
+      const [tokenRows, repoRows] = await Promise.all([
+        api<TokenRecord[]>("/api/tokens", token),
+        api<RepoRecord[]>("/api/repos", token),
+      ]);
+      setTokens(tokenRows);
+      setRepos(repoRows);
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "Unable to load account data");
+    }
+  };
+
+  useEffect(() => { void loadAdministration(); }, [token, sessionActive]);
+
+  const action = async (work: () => Promise<void>) => {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await work();
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "Request failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const saveBrowserToken = (next: string) => {
+    setSessionActive(false);
+    setValue(next);
+    onToken(next);
+  };
+  const register = () => {
+    void action(async () => {
+      await api("/api/register", "", { method: "POST", body: JSON.stringify({ username, password }) });
+      setMessage("Account registered. Create a PAT below to connect the browser.");
+    });
+  };
+  const login = () => {
+    void action(async () => {
+      await api("/api/session", "", { method: "POST", body: JSON.stringify({ username, password }) });
+      saveBrowserToken("");
+      setSessionActive(true);
+      setMessage("Signed in with a secure browser session.");
+    });
+  };
+  const createToken = (event: FormEvent) => {
+    event.preventDefault();
+    void action(async () => {
+      const created = await api<{ id: number; token: string }>("/api/tokens", token, { method: "POST", body: JSON.stringify({ username, password, name: tokenName, mode: tokenMode }) });
+      setNewToken(created.token);
+      setActiveTokenId(created.id);
+      saveBrowserToken(created.token);
+      setMessage("PAT created. Copy it now; the Hub will not show it again.");
+      setPassword("");
+      await loadAdministration();
+    });
+  };
+  const revokeToken = (id: number) => {
+    void action(async () => {
+      await api(`/api/tokens/${id}/revoke`, token, { method: "POST" });
+      if (id === activeTokenId) {
+        setNewToken("");
+        setActiveTokenId(null);
+        saveBrowserToken("");
+      }
+      await loadAdministration();
+    });
+  };
+  const createRepo = (event: FormEvent) => {
+    event.preventDefault();
+    void action(async () => {
+      await api("/api/repos", token, { method: "POST", body: JSON.stringify({ name: repoName, public: isPublic }) });
+      onRepo(repoName);
+      setRepoName("");
+      setMessage("Repository created.");
+      await loadAdministration();
+    });
+  };
+  const addCollaborator = (event: FormEvent) => {
+    event.preventDefault();
+    void action(async () => {
+      await api(`/api/repos/${encodeURIComponent(repo)}/collaborators`, token, { method: "POST", body: JSON.stringify({ username: collaborator, mode: collaboratorMode }) });
+      setCollaborator("");
+      setMessage(`Collaborator added to ${repo}.`);
+    });
+  };
+  const logout = () => {
+    void action(async () => {
+      await api("/api/session", "", { method: "DELETE" });
+      setSessionActive(false);
+      setMessage("Browser session ended.");
+      await loadAdministration();
+    });
+  };
+
+  return <div className="account-grid">
+    <section className="panel account-panel">
+      <span className="eyebrow">account access</span>
+      <h2>Register or sign in</h2>
+      <p className="subtle">Sessions use an HttpOnly cookie. PATs remain the CLI’s portable bootstrap credential.</p>
+      <form className="admin-form" onSubmit={(event) => { event.preventDefault(); login(); }}>
+        <input aria-label="Username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" autoComplete="username" />
+        <input aria-label="Password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" autoComplete="current-password" />
+        <div className="account-actions"><button className="primary-button" disabled={busy || !username || !password}>Sign in</button><button className="ghost-button" type="button" disabled={busy || !username || !password} onClick={register}>Register</button>{sessionActive && <button className="ghost-button" type="button" disabled={busy} onClick={logout}>Sign out</button>}</div>
+      </form>
+      {message && <p className="account-message">{message}</p>}
+      {error && <p className="account-error">{error}</p>}
+    </section>
+    <section className="panel account-panel">
+      <span className="eyebrow">personal access tokens</span>
+      <h2>Create and revoke</h2>
+      <form className="admin-form" onSubmit={createToken}>
+        <input aria-label="Token name" value={tokenName} onChange={(event) => setTokenName(event.target.value)} placeholder="Token name" />
+        <select aria-label="Token mode" value={tokenMode} onChange={(event) => setTokenMode(event.target.value)}><option value="rw">read / write</option><option value="ro">read only</option></select>
+        <button className="primary-button" disabled={busy || !username || !password}>Create PAT</button>
+      </form>
+      {newToken && <div className="token-reveal"><span>one-time token</span><code>{newToken}</code></div>}
+      <div className="admin-list">{tokens.map((item) => <div className="admin-row" key={item.id}><span><strong>{item.name}</strong><small>{item.mode} · {item.revoked ? "revoked" : "active"}</small></span>{!item.revoked && <button className="ghost-button" disabled={busy} onClick={() => revokeToken(item.id)}>Revoke</button>}</div>)}{authenticated && tokens.length === 0 && <p className="empty-note">No named PATs yet.</p>}</div>
+    </section>
+    <section className="panel account-panel">
+      <span className="eyebrow">repository administration</span>
+      <h2>Create a repository</h2>
+      <form className="admin-form" onSubmit={createRepo}><input aria-label="New repository name" value={repoName} onChange={(event) => setRepoName(event.target.value)} placeholder="Repository name" /><label className="check-label"><input type="checkbox" checked={isPublic} onChange={(event) => setIsPublic(event.target.checked)} /> Public repository</label><button className="primary-button" disabled={busy || !repoName || !authenticated}>Create repository</button></form>
+      <div className="admin-list">{repos.map((item) => <button className="admin-row repo-admin-row" key={item.name} onClick={() => onRepo(item.name)}><span><strong>{item.name}</strong><small>{item.owner} · {item.public ? "public" : "private"}</small></span><span className="neutral-pill">open</span></button>)}</div>
+    </section>
+    <section className="panel account-panel">
+      <span className="eyebrow">access control</span>
+      <h2>Manage collaborators</h2>
+      <p className="subtle">Selected repository: <code>{repo}</code></p>
+      <form className="admin-form" onSubmit={addCollaborator}><input aria-label="Collaborator username" value={collaborator} onChange={(event) => setCollaborator(event.target.value)} placeholder="Username" /><select aria-label="Collaborator mode" value={collaboratorMode} onChange={(event) => setCollaboratorMode(event.target.value)}><option value="rw">read / write</option><option value="ro">read only</option></select><button className="primary-button" disabled={busy || !collaborator || !authenticated}>Add collaborator</button></form>
+    </section>
+    <section className="panel account-panel accent-panel">
+      <span className="eyebrow">cli-first identity</span>
+      <h2>Secrets stay local</h2>
+      <p>Run <code>graft auth login &lt;hub-url&gt;</code> to paste a named PAT and publish the discovery-only Member Identity. Environment mutation never happens here.</p>
+      <a className="text-link" href="/settings/tokens/new">Open token settings ↗</a>
+    </section>
+  </div>;
 }
 
 export default App;
