@@ -370,6 +370,16 @@ fn unique_temp_dir() -> PathBuf {
 }
 
 fn binary_path(name: &str) -> PathBuf {
+    let override_name = match name {
+        "graft" => "GRAFT_E2E_GRAFT_BIN",
+        "graft-hub" => "GRAFT_E2E_HUB_BIN",
+        _ => "",
+    };
+    if !override_name.is_empty() {
+        if let Ok(path) = std::env::var(override_name) {
+            return PathBuf::from(path);
+        }
+    }
     let variable = format!("CARGO_BIN_EXE_{}", name.replace('-', "_"));
     if let Ok(path) = std::env::var(&variable) {
         return PathBuf::from(path);
