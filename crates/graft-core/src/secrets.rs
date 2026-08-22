@@ -911,9 +911,7 @@ pub fn create_empty_environment(
         },
     );
     keyring.previous = store.get_ref("secrets/keyring")?;
-    if keyring.previous.is_some() {
-        keyring.sign(credential)?;
-    }
+    keyring.sign(credential)?;
     let bundle = SecretBundle::encrypt(&current, &SecretMap::empty())?;
     let keyring_artifact = keyring.artifact()?;
     let bundle_artifact = bundle.artifact()?;

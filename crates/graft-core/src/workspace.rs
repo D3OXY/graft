@@ -236,8 +236,7 @@ impl Workspace {
                 .ok_or_else(|| WorkspaceError::InvalidState("revision has no tree".into()))?;
             workspace.state.working_change = revision.change_id().to_string();
             workspace.state.working_tree = tree.to_string();
-            workspace.state.working_parents =
-                revision.parents().iter().map(ToString::to_string).collect();
+            workspace.state.working_parents = vec![revision_id.to_string()];
             workspace.state.conflict_trees.clear();
             workspace.state.message = revision.message().to_owned();
             materialize_tree(&workspace.store, &workspace.root, tree, None)?;
@@ -778,6 +777,67 @@ mod tests {
         workspace.snap("empty").expect("snap");
         let status = workspace.status().expect("status");
         assert!(status.changes.is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn editing_and_amending_a_stack_preserves_other_branches_and_descendant_changes() {
+        let root = temp_dir();
+        fs::create_dir_all(&root).expect("dir");
+        let mut workspace = Workspace::init(&root).expect("init");
+        fs::write(root.join("root.txt"), b"root\n").expect("root");
+        let base = workspace.snap("base").expect("base");
+        workspace.branch("dev").expect("branch");
+        fs::write(root.join("root.txt"), b"root\none\n").expect("first");
+        let first = workspace.snap("first").expect("first");
+        fs::write(root.join("child.txt"), b"child\n").expect("child");
+        let old_tip = workspace.snap("second").expect("second");
+        let first_revision = Revision::from_artifact(
+            workspace
+                .store()
+                .get(first)
+                .expect("first artifact")
+                .expect("first revision"),
+        )
+        .expect("first revision");
+        workspace
+            .edit(&first_revision.change_id().to_string())
+            .expect("edit");
+        fs::write(root.join("root.txt"), b"root\none\namended\n").expect("amend");
+        let amended = workspace.amend().expect("amend");
+        assert_eq!(
+            workspace.store().get_ref("branches/main").expect("main"),
+            Some(base)
+        );
+        let tip = workspace
+            .store()
+            .get_ref("branches/dev")
+            .expect("dev")
+            .expect("dev tip");
+        assert_ne!(tip, old_tip);
+        let tip_revision = Revision::from_artifact(
+            workspace
+                .store()
+                .get(tip)
+                .expect("tip artifact")
+                .expect("tip"),
+        )
+        .expect("tip revision");
+        assert_eq!(tip_revision.parents(), &[amended]);
+        let tree = tip_revision.trees()[0];
+        let files = flatten_tree(&workspace.store(), tree).expect("tip tree");
+        let root_blob = workspace
+            .store()
+            .get(files["root.txt"].target)
+            .expect("root blob")
+            .expect("root blob artifact");
+        let child_blob = workspace
+            .store()
+            .get(files["child.txt"].target)
+            .expect("child blob")
+            .expect("child blob artifact");
+        assert_eq!(root_blob.payload(), b"root\none\namended\n");
+        assert_eq!(child_blob.payload(), b"child\n");
         let _ = fs::remove_dir_all(root);
     }
 

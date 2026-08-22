@@ -74,7 +74,7 @@ enum HubError {
     Sync(#[from] SyncError),
     #[error("store error")]
     Store(#[from] StoreError),
-    #[error("land error")]
+    #[error("land error: {0}")]
     Land(#[from] graft_core::LandError),
     #[error("diff error")]
     Diff(#[from] graft_core::diff::DiffError),

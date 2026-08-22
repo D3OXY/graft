@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+serde_json.workspace = true
+
 [[test]]
 name = "v1_journey"
 path = "tests/v1_journey.rs"

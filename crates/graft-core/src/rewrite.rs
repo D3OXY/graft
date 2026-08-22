@@ -1,6 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::{artifact::Revision, ArtifactId, Person, RepoStore};
+use crate::{
+    artifact::Revision,
+    merge::{merge_trees, MergeOutcome},
+    ArtifactId, Person, RepoStore,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RewriteError {
@@ -8,6 +12,10 @@ pub enum RewriteError {
     MissingRevision(ArtifactId),
     #[error("artifact `{0}` is not a revision")]
     NotRevision(ArtifactId),
+    #[error("rewriting revision `{0}` produces a tree conflict")]
+    Conflict(ArtifactId),
+    #[error("merge error: {0}")]
+    Merge(#[from] crate::merge::MergeError),
     #[error("repository error: {0}")]
     Store(#[from] crate::store::StoreError),
     #[error("artifact error: {0}")]
@@ -59,13 +67,14 @@ pub fn rewrite_descendants(
         }
         for child_id in children.get(&parent).into_iter().flatten() {
             let child = load_revision(store, *child_id)?;
+            let tree = rewritten_tree(store, *child_id, &child, &mapping)?;
             let parents = child
                 .parents()
                 .iter()
                 .map(|id| mapping.get(id).copied().unwrap_or(*id))
                 .collect();
             let rewritten = Revision::new(
-                child.trees().to_vec(),
+                tree,
                 parents,
                 child.change_id(),
                 child.author().clone(),
@@ -80,6 +89,36 @@ pub fn rewrite_descendants(
     Ok(mapping)
 }
 
+fn rewritten_tree(
+    store: &RepoStore,
+    child_id: ArtifactId,
+    child: &Revision,
+    mapping: &BTreeMap<ArtifactId, ArtifactId>,
+) -> Result<Vec<ArtifactId>, RewriteError> {
+    let Some(original_parent) = child.parents().first().copied() else {
+        return Ok(child.trees().to_vec());
+    };
+    let Some(rewritten_parent) = mapping.get(&original_parent).copied() else {
+        return Ok(child.trees().to_vec());
+    };
+    if original_parent == rewritten_parent || child.trees().len() != 1 {
+        return Ok(child.trees().to_vec());
+    }
+    let original_base_tree = load_revision(store, original_parent)?
+        .trees()
+        .first()
+        .copied();
+    let rewritten_parent_tree = load_revision(store, rewritten_parent)?
+        .trees()
+        .first()
+        .copied();
+    let child_tree = child.trees().first().copied();
+    match merge_trees(store, original_base_tree, rewritten_parent_tree, child_tree)? {
+        MergeOutcome::Clean(tree) => Ok(vec![tree]),
+        MergeOutcome::Conflict(_) => Err(RewriteError::Conflict(child_id)),
+    }
+}
+
 fn load_revision(store: &RepoStore, id: ArtifactId) -> Result<Revision, RewriteError> {
     let artifact = store.get(id)?.ok_or(RewriteError::MissingRevision(id))?;
     Revision::from_artifact(artifact).map_err(|_| RewriteError::NotRevision(id))
@@ -88,10 +127,27 @@ fn load_revision(store: &RepoStore, id: ArtifactId) -> Result<Revision, RewriteE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ChangeId, Person, Revision};
+    use crate::{
+        tree::{build_tree, FileEntry},
+        Blob, ChangeId, Person, Revision, TreeEntryKind,
+    };
 
-    fn id(byte: u8) -> ArtifactId {
-        ArtifactId::from_bytes([byte; 32])
+    fn tree(store: &RepoStore, files: &[(&str, &[u8])]) -> ArtifactId {
+        let entries = files
+            .iter()
+            .map(|(path, bytes)| {
+                let blob = Blob::from_bytes(bytes).expect("blob");
+                store.insert(blob.artifact()).expect("blob");
+                (
+                    (*path).to_owned(),
+                    FileEntry {
+                        kind: TreeEntryKind::File,
+                        target: blob.id(),
+                    },
+                )
+            })
+            .collect();
+        build_tree(store, &entries).expect("tree")
     }
     fn person() -> Person {
         Person {
@@ -105,7 +161,7 @@ mod tests {
     fn rebase_keeps_change_id_and_rewrites_descendants() {
         let store = RepoStore::memory().expect("store");
         let root = Revision::new(
-            vec![id(1)],
+            vec![tree(&store, &[("root", b"root")])],
             vec![],
             ChangeId::from_bytes([1; 16]),
             person(),
@@ -115,7 +171,7 @@ mod tests {
         .expect("root");
         let root = store.insert(root.artifact()).expect("root");
         let child = Revision::new(
-            vec![id(2)],
+            vec![tree(&store, &[("root", b"root"), ("child", b"child")])],
             vec![root],
             ChangeId::from_bytes([2; 16]),
             person(),
@@ -125,7 +181,7 @@ mod tests {
         .expect("child");
         let child = store.insert(child.artifact()).expect("child");
         let replacement = Revision::new(
-            vec![id(9)],
+            vec![tree(&store, &[("root", b"replacement")])],
             vec![],
             ChangeId::from_bytes([1; 16]),
             person(),
