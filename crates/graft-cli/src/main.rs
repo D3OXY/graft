@@ -282,6 +282,10 @@ fn auth(args: &[String]) -> Result<(), WorkspaceError> {
             let member = credential.member_identity();
             println!("age recipient: {}", member.age_recipient());
             println!("member fingerprint: {}", member.member_id());
+            println!(
+                "signing public: {}",
+                MemberId::from_bytes(member.signing_public())
+            );
             Ok(())
         }
         "login" => remote::login_command(&args[1..]),

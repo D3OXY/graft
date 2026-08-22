@@ -14,7 +14,7 @@ use argon2::{
 use axum::{
     body::Bytes,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -32,7 +32,7 @@ use graft_sync::{
     apply_file_frames, apply_ref_batch, decode_frames, encode_frames, plan_files, Frame, SyncError,
     ViewRef,
 };
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -179,9 +179,16 @@ struct TokenRequest {
 
 #[derive(Serialize)]
 struct TokenResponse {
+    id: i64,
     token: String,
     name: String,
     mode: String,
+}
+
+#[derive(Deserialize)]
+struct SessionRequest {
+    username: String,
+    password: String,
 }
 
 #[derive(Deserialize)]
@@ -306,7 +313,9 @@ fn router(state: AppState) -> Router {
         .route("/", get(web::index))
         .route("/health", get(health))
         .route("/api/register", post(register))
-        .route("/api/tokens", post(create_token))
+        .route("/api/tokens", get(list_tokens).post(create_token))
+        .route("/api/tokens/{id}/revoke", post(revoke_token))
+        .route("/api/session", post(create_session).delete(delete_session))
         .route("/api/repos", get(list_repos).post(create_repo))
         .route("/api/repos/{name}", get(repo_info))
         .route("/api/repos/{name}/browse", get(browse_repo))
@@ -426,6 +435,7 @@ fn initialize_database(config: &HubConfig) -> Result<(), HubError> {
         "PRAGMA foreign_keys = ON;
          CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, admin INTEGER NOT NULL DEFAULT 0);
          CREATE TABLE IF NOT EXISTS pats (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), name TEXT NOT NULL, token_hash BLOB NOT NULL UNIQUE, mode TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0);
+         CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), session_hash BLOB NOT NULL UNIQUE, expires_at INTEGER NOT NULL);
          CREATE TABLE IF NOT EXISTS repos (name TEXT PRIMARY KEY, owner_id INTEGER NOT NULL REFERENCES users(id), is_public INTEGER NOT NULL, path TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS collaborators (repo_name TEXT NOT NULL REFERENCES repos(name), user_id INTEGER NOT NULL REFERENCES users(id), mode TEXT NOT NULL, PRIMARY KEY(repo_name, user_id));
          CREATE TABLE IF NOT EXISTS profiles (user_id INTEGER PRIMARY KEY REFERENCES users(id), member_id TEXT NOT NULL, age_recipient TEXT NOT NULL, signing_public TEXT NOT NULL);
@@ -521,8 +531,8 @@ async fn register(
     if request.username.is_empty() || request.password.is_empty() {
         return Err(ApiFailure(HubError::InvalidRequest));
     }
-    let connection = open_db(&state.config)?;
-    let transaction = connection.unchecked_transaction()?;
+    let mut connection = open_db(&state.config)?;
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let count: i64 = transaction.query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))?;
     if count > 0 && !state.config.open_registration {
         return Err(ApiFailure(HubError::Forbidden));
@@ -574,11 +584,105 @@ async fn create_token(
         "INSERT INTO pats (user_id, name, token_hash, mode) VALUES (?1, ?2, ?3, ?4)",
         params![user_id, request.name, hash.as_bytes().as_slice(), mode],
     )?;
+    let id = connection.last_insert_rowid();
     Ok(Json(TokenResponse {
+        id,
         token,
         name: request.name,
         mode,
     }))
+}
+
+async fn list_tokens(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ApiFailure> {
+    let user = auth_user(&state, &headers)?;
+    let connection = open_db(&state.config)?;
+    let mut statement = connection
+        .prepare("SELECT id, name, mode, revoked FROM pats WHERE user_id = ?1 ORDER BY id")?;
+    let rows = statement.query_map(params![user.id], |row| {
+        Ok(serde_json::json!({
+            "id": row.get::<_, i64>(0)?,
+            "name": row.get::<_, String>(1)?,
+            "mode": row.get::<_, String>(2)?,
+            "revoked": row.get::<_, i64>(3)? != 0
+        }))
+    })?;
+    Ok(Json(rows.collect::<Result<Vec<_>, _>>()?))
+}
+
+async fn revoke_token(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiFailure> {
+    let user = auth_user(&state, &headers)?;
+    let connection = open_db(&state.config)?;
+    let updated = connection.execute(
+        "UPDATE pats SET revoked = 1 WHERE id = ?1 AND user_id = ?2",
+        params![id, user.id],
+    )?;
+    if updated == 0 {
+        return Err(ApiFailure(HubError::NotFound));
+    }
+    Ok(Json(serde_json::json!({ "revoked": true, "id": id })))
+}
+
+async fn create_session(
+    State(state): State<AppState>,
+    Json(request): Json<SessionRequest>,
+) -> Result<Response, ApiFailure> {
+    let connection = open_db(&state.config)?;
+    let (user_id, password_hash): (i64, String) = connection
+        .query_row(
+            "SELECT id, password_hash FROM users WHERE username = ?1",
+            params![request.username],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?
+        .ok_or(HubError::Unauthorized)?;
+    verify_password(&request.password, &password_hash).map_err(|_| HubError::Unauthorized)?;
+    let session = random_hex::<32>();
+    let hash = blake3::hash(session.as_bytes());
+    connection.execute(
+        "INSERT INTO sessions (user_id, session_hash, expires_at) VALUES (?1, ?2, ?3)",
+        params![
+            user_id,
+            hash.as_bytes().as_slice(),
+            now() + 30 * 24 * 60 * 60
+        ],
+    )?;
+    let mut response = Json(serde_json::json!({ "authenticated": true })).into_response();
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        format!("graft_session={session}; HttpOnly; SameSite=Lax; Path=/")
+            .parse()
+            .map_err(|_| HubError::InvalidRequest)?,
+    );
+    Ok(response)
+}
+
+async fn delete_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, ApiFailure> {
+    if let Some(session) = session_cookie(&headers) {
+        let connection = open_db(&state.config)?;
+        let hash = blake3::hash(session.as_bytes());
+        connection.execute(
+            "DELETE FROM sessions WHERE session_hash = ?1",
+            params![hash.as_bytes().as_slice()],
+        )?;
+    }
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    response.headers_mut().append(
+        header::SET_COOKIE,
+        "graft_session=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/"
+            .parse()
+            .map_err(|_| HubError::InvalidRequest)?,
+    );
+    Ok(response)
 }
 
 async fn list_repos(
@@ -1773,29 +1877,52 @@ fn auth_user(state: &AppState, headers: &HeaderMap) -> Result<AuthUser, HubError
 }
 
 fn auth_user_optional(state: &AppState, headers: &HeaderMap) -> Result<Option<AuthUser>, HubError> {
-    let Some(value) = headers
-        .get(axum::http::header::AUTHORIZATION)
+    let connection = open_db(&state.config)?;
+    if let Some(value) = headers
+        .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-    else {
+    {
+        let Some(token) = value.strip_prefix("Bearer ") else {
+            return Err(HubError::Unauthorized);
+        };
+        let hash = blake3::hash(token.as_bytes());
+        return Ok(connection
+            .query_row(
+                "SELECT user_id, mode FROM pats WHERE token_hash = ?1 AND revoked = 0",
+                params![hash.as_bytes().as_slice()],
+                |row| {
+                    Ok(AuthUser {
+                        id: row.get(0)?,
+                        mode: row.get(1)?,
+                    })
+                },
+            )
+            .optional()?);
+    }
+    let Some(session) = session_cookie(headers) else {
         return Ok(None);
     };
-    let Some(token) = value.strip_prefix("Bearer ") else {
-        return Err(HubError::Unauthorized);
-    };
-    let hash = blake3::hash(token.as_bytes());
-    let connection = open_db(&state.config)?;
+    let hash = blake3::hash(session.as_bytes());
     Ok(connection
         .query_row(
-            "SELECT user_id, mode FROM pats WHERE token_hash = ?1 AND revoked = 0",
-            params![hash.as_bytes().as_slice()],
+            "SELECT user_id FROM sessions WHERE session_hash = ?1 AND expires_at > ?2",
+            params![hash.as_bytes().as_slice(), now()],
             |row| {
                 Ok(AuthUser {
                     id: row.get(0)?,
-                    mode: row.get(1)?,
+                    mode: "rw".into(),
                 })
             },
         )
         .optional()?)
+}
+
+fn session_cookie(headers: &HeaderMap) -> Option<String> {
+    let value = headers.get(header::COOKIE)?.to_str().ok()?;
+    value.split(';').find_map(|part| {
+        let (name, value) = part.trim().split_once('=')?;
+        (name == "graft_session" && !value.is_empty()).then(|| value.to_owned())
+    })
 }
 
 fn require_rw(user: &AuthUser) -> Result<(), HubError> {
@@ -1949,6 +2076,28 @@ mod tests {
         .await
     }
 
+    async fn cookie_request(
+        app: &axum::Router,
+        method: Method,
+        uri: &str,
+        cookie: &str,
+        body: Vec<u8>,
+        content_type: &str,
+    ) -> axum::response::Response {
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(uri)
+                    .header(header::COOKIE, cookie)
+                    .header(header::CONTENT_TYPE, content_type)
+                    .body(Body::from(body))
+                    .expect("valid request"),
+            )
+            .await
+            .expect("router response")
+    }
+
     async fn body_json(response: axum::response::Response) -> Value {
         let bytes = to_bytes(response.into_body(), 1024 * 1024)
             .await
@@ -2079,6 +2228,125 @@ mod tests {
             store.get_ref("heads/main").expect("ref lookup"),
             Some(blob.id())
         );
+        std::fs::remove_dir_all(config.data_dir).expect("test cleanup");
+    }
+
+    #[tokio::test]
+    async fn sessions_and_token_lifecycle_are_authenticated() {
+        let config = test_config();
+        initialize_database(&config).expect("database initializes");
+        let app = router(AppState {
+            config: Arc::new(config.clone()),
+        });
+        let response = json_request(
+            &app,
+            Method::POST,
+            "/api/register",
+            None,
+            serde_json::json!({"username": "owner", "password": "correct horse"}),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let response = json_request(
+            &app,
+            Method::POST,
+            "/api/session",
+            None,
+            serde_json::json!({"username": "owner", "password": "correct horse"}),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = response
+            .headers()
+            .get(header::SET_COOKIE)
+            .expect("session cookie")
+            .to_str()
+            .expect("cookie header")
+            .split(';')
+            .next()
+            .expect("cookie value")
+            .to_owned();
+        let response = cookie_request(
+            &app,
+            Method::GET,
+            "/api/repos",
+            &cookie,
+            Vec::new(),
+            "application/json",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let response = json_request(
+            &app,
+            Method::POST,
+            "/api/tokens",
+            None,
+            serde_json::json!({
+                "username": "owner",
+                "password": "correct horse",
+                "name": "test",
+                "mode": "rw"
+            }),
+        )
+        .await;
+        let token_body = body_json(response).await;
+        let token = token_body["token"].as_str().expect("token").to_owned();
+        let token_id = token_body["id"].as_i64().expect("token id");
+        let response = request(
+            &app,
+            Method::GET,
+            "/api/tokens",
+            Some(&token),
+            Vec::new(),
+            "application/json",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(body_json(response).await[0]["id"], token_id);
+
+        let response = request(
+            &app,
+            Method::POST,
+            &format!("/api/tokens/{token_id}/revoke"),
+            Some(&token),
+            Vec::new(),
+            "application/json",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = request(
+            &app,
+            Method::GET,
+            "/api/repos",
+            Some(&token),
+            Vec::new(),
+            "application/json",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let response = cookie_request(
+            &app,
+            Method::DELETE,
+            "/api/session",
+            &cookie,
+            Vec::new(),
+            "application/json",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let response = cookie_request(
+            &app,
+            Method::GET,
+            "/api/repos",
+            &cookie,
+            Vec::new(),
+            "application/json",
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         std::fs::remove_dir_all(config.data_dir).expect("test cleanup");
     }
 
