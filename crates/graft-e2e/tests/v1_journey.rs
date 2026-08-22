@@ -99,6 +99,9 @@ fn v1_journey_survives_real_processes_and_restart() {
     let hub_binary = binary_path("graft-hub");
     let (hub, client) = spawn_hub(&hub_binary, &hub_data);
     let hub_url = format!("http://{}", client.address);
+    let landing = client.request("GET", "/", None, &[], "");
+    assert_eq!(landing.status, 200);
+    assert!(String::from_utf8_lossy(&landing.body).contains("Graft Hub"));
 
     let alice_pat = create_user_and_token(&client, "alice", "alice password", "alice-cli");
     let bob_pat = create_user_and_token(&client, "bob", "bob password", "bob-cli");
