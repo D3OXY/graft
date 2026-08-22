@@ -70,7 +70,7 @@ impl FromStr for ChangeId {
             return Err(super::id::IdError::WrongLength);
         }
         let mut bytes = [0u8; 16];
-        for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        for (index, pair) in value.as_bytes().as_chunks::<2>().0.iter().enumerate() {
             bytes[index] = change_hex(pair[0])? << 4 | change_hex(pair[1])?;
         }
         Ok(Self(bytes))

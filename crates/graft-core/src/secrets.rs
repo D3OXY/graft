@@ -114,7 +114,7 @@ impl FromStr for MemberId {
             return Err(SecretError::MalformedCanonical);
         }
         let mut output = [0u8; 32];
-        for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        for (index, pair) in value.as_bytes().as_chunks::<2>().0.iter().enumerate() {
             output[index] = nibble(pair[0])? << 4 | nibble(pair[1])?;
         }
         Ok(Self(output))
