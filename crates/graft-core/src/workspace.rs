@@ -395,6 +395,34 @@ impl Workspace {
         Ok(self.store.refs()?)
     }
 
+    pub fn set_import_head(
+        &mut self,
+        branch: &str,
+        revision_id: ArtifactId,
+    ) -> Result<(), WorkspaceError> {
+        let revision = self.load_revision(revision_id)?;
+        let tree =
+            revision.trees().first().copied().ok_or_else(|| {
+                WorkspaceError::InvalidState("imported revision has no tree".into())
+            })?;
+        let reference = branch_ref(branch);
+        let expected = self.store.get_ref(&reference)?;
+        self.store.cas_refs(&[crate::RefUpdate {
+            name: reference,
+            expected,
+            new: Some(revision_id),
+        }])?;
+        self.state.active_branch = branch.to_owned();
+        self.state.working_change = ChangeId::random().to_string();
+        self.state.working_tree = tree.to_string();
+        self.state.working_parents = vec![revision_id.to_string()];
+        self.state.conflict_trees.clear();
+        self.state.message.clear();
+        materialize_tree(&self.store, &self.root, tree, None)?;
+        self.save_state()?;
+        Ok(())
+    }
+
     pub fn log(&self) -> Result<Vec<ArtifactId>, WorkspaceError> {
         let refs = self.store.refs()?;
         let roots = refs

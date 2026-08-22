@@ -3,15 +3,14 @@ use std::{
     io::Write,
     path::PathBuf,
     process::Command,
-    time::{SystemTime, UNIX_EPOCH},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
+static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+
 fn temp_dir() -> PathBuf {
-    let suffix = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock")
-        .as_nanos();
-    let path = std::env::temp_dir().join(format!("graft-cli-{suffix}"));
+    let suffix = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!("graft-cli-{}-{suffix}", std::process::id()));
     fs::create_dir_all(&path).expect("directory");
     path
 }
@@ -138,5 +137,50 @@ fn env_set_and_run_keeps_secret_out_of_the_tree() {
                 })
                 .unwrap_or(false)
     }));
+    let _ = fs::remove_dir_all(path);
+}
+
+#[test]
+fn git_import_creates_a_fresh_graft_history() {
+    let path = temp_dir();
+    let source = path.join("git-source");
+    let destination = path.join("graft-destination");
+    fs::create_dir_all(&source).expect("source");
+    let git = |args: &[&str]| {
+        let output = Command::new("git")
+            .current_dir(&source)
+            .args(args)
+            .output()
+            .expect("git");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "import@example.test"]);
+    git(&["config", "user.name", "Importer"]);
+    fs::write(source.join("script.sh"), "#!/bin/sh\necho imported\n").expect("file");
+    git(&["add", "script.sh"]);
+    git(&["commit", "-q", "-m", "seed"]);
+    let imported = graft(
+        &path,
+        &[
+            "import",
+            source.to_str().expect("source"),
+            destination.to_str().expect("destination"),
+        ],
+    );
+    assert!(
+        imported.status.success(),
+        "{}",
+        String::from_utf8_lossy(&imported.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(destination.join("script.sh")).expect("imported file"),
+        "#!/bin/sh\necho imported\n"
+    );
+    assert!(destination.join(".graft").is_dir());
     let _ = fs::remove_dir_all(path);
 }

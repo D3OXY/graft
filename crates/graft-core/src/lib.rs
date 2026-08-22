@@ -2,6 +2,7 @@
 
 pub mod artifact;
 pub mod diff;
+pub mod git_import;
 pub mod graph;
 pub mod merge;
 pub mod rewrite;

@@ -7,6 +7,7 @@ use std::{
 
 use graft_core::{
     artifact::Revision,
+    git_import::import_git,
     secrets::{
         create_empty_environment, parse_dotenv, validate_secret_name, Credential,
         EnvironmentGeneration, Keyring, MemberId, MemberIdentity, SecretBundle,
@@ -41,6 +42,7 @@ fn run(args: Vec<String>) -> Result<(), WorkspaceError> {
         "branch" => branch(&args[1..])?,
         "switch" => switch_branch(&args[1..])?,
         "merge" => merge(&args[1..])?,
+        "import" => git_import_command(&args[1..])?,
         "env" => secrets_env(&args[1..])?,
         "auth" => auth(&args[1..])?,
         "undo" => Workspace::open(env::current_dir()?)?.undo()?,
@@ -79,6 +81,21 @@ fn init(args: &[String]) -> Result<(), WorkspaceError> {
         "Working Change: {}",
         display_change(&workspace.state().working_change)
     );
+    Ok(())
+}
+
+fn git_import_command(args: &[String]) -> Result<(), WorkspaceError> {
+    if args.len() != 2 {
+        return Err(WorkspaceError::InvalidState(
+            "usage: graft import <git-source> <fresh-destination>".into(),
+        ));
+    }
+    let result = import_git(&args[0], &args[1])
+        .map_err(|error| WorkspaceError::InvalidState(error.to_string()))?;
+    for warning in result.warnings {
+        eprintln!("warning: {warning}");
+    }
+    println!("Imported {} branch(es)", result.heads.len());
     Ok(())
 }
 
