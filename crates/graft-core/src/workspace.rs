@@ -776,9 +776,61 @@ fn materialize_tree(
     }
     if let Some(conflicts) = conflict_trees {
         if conflicts.len() > 1 {
-            // The first tree remains the canonical data view. Conflict metadata stays in
-            // the workspace state until the next snapshot resolves it.
+            materialize_conflict_markers(store, root, conflicts)?;
         }
+    }
+    Ok(())
+}
+
+fn materialize_conflict_markers(
+    store: &RepoStore,
+    root: &Path,
+    conflicts: &[ArtifactId],
+) -> Result<(), WorkspaceError> {
+    let trees = conflicts
+        .iter()
+        .map(|tree| flatten_tree(store, *tree))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut paths = BTreeMap::new();
+    for tree in &trees {
+        for path in tree.keys() {
+            paths.insert(path.clone(), ());
+        }
+    }
+    for path in paths.keys() {
+        let entries = trees
+            .iter()
+            .map(|tree| tree.get(path).copied())
+            .collect::<Vec<_>>();
+        if entries.windows(2).all(|pair| pair[0] == pair[1]) {
+            continue;
+        }
+        let mut marker = Vec::new();
+        marker.extend_from_slice(b"<<<<<<< left\n");
+        append_conflict_side(store, &mut marker, entries.first().copied().flatten())?;
+        marker.extend_from_slice(b"\n=======\n");
+        append_conflict_side(store, &mut marker, entries.last().copied().flatten())?;
+        marker.extend_from_slice(b"\n>>>>>>> right\n");
+        let full = root.join(path);
+        if let Some(parent) = full.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let _ = fs::remove_file(&full);
+        fs::write(full, marker)?;
+    }
+    Ok(())
+}
+
+fn append_conflict_side(
+    store: &RepoStore,
+    output: &mut Vec<u8>,
+    entry: Option<FileEntry>,
+) -> Result<(), WorkspaceError> {
+    if let Some(entry) = entry {
+        let artifact = store
+            .get(entry.target)?
+            .ok_or(WorkspaceError::UnrepresentableWorkingCopy)?;
+        output.extend_from_slice(artifact.payload());
     }
     Ok(())
 }
@@ -893,6 +945,30 @@ mod tests {
             .expect("child blob artifact");
         assert_eq!(root_blob.payload(), b"root\none\namended\n");
         assert_eq!(child_blob.payload(), b"child\n");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn merge_conflicts_are_materialized_as_markers_until_resolved() {
+        let root = temp_dir();
+        fs::create_dir_all(&root).expect("dir");
+        let mut workspace = Workspace::init(&root).expect("init");
+        fs::write(root.join("shared.txt"), b"base\n").expect("base");
+        workspace.snap("base").expect("base snap");
+        workspace.branch("dev").expect("branch");
+        fs::write(root.join("shared.txt"), b"dev\n").expect("dev");
+        workspace.snap("dev").expect("dev snap");
+        workspace.switch("main").expect("main");
+        fs::write(root.join("shared.txt"), b"main\n").expect("main");
+        workspace.snap("main").expect("main snap");
+        assert!(workspace.merge("dev").expect("merge"));
+        let marker = fs::read_to_string(root.join("shared.txt")).expect("marker");
+        assert!(marker.contains("<<<<<<< left"));
+        assert!(marker.contains("=======") && marker.contains(">>>>>>> right"));
+        assert!(workspace.status().expect("status").conflicts);
+        fs::write(root.join("shared.txt"), b"resolved\n").expect("resolve");
+        workspace.snap("resolve").expect("resolved snap");
+        assert!(!workspace.status().expect("status").conflicts);
         let _ = fs::remove_dir_all(root);
     }
 
