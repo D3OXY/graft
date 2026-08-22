@@ -97,6 +97,9 @@ dependencies = [
 [[package]]
 name = "graft-cli"
 version = "0.1.0"
+dependencies = [
+ "graft-core",
+]
 
 [[package]]
 name = "graft-core"

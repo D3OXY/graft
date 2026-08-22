@@ -16,3 +16,4 @@ pub use artifact::{
     TreeEntryKind,
 };
 pub use store::{RefUpdate, RepoStore};
+pub use workspace::{Workspace, WorkspaceError, WorkspaceState, WorkspaceStatus};
