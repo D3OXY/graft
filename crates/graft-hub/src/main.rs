@@ -1005,6 +1005,13 @@ fn now() -> i64 {
         .unwrap_or_default()
 }
 
+fn now_nanos() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos().min(i64::MAX as u128) as i64)
+        .unwrap_or_default()
+}
+
 fn hub_person() -> Person {
     Person {
         name: "Graft Hub".into(),
@@ -1159,6 +1166,7 @@ async fn create_proposal(
         return Err(ApiFailure(HubError::InvalidRequest));
     }
     let timestamp = now();
+    let seen_at = now_nanos();
     let title = request
         .title
         .filter(|title| !title.trim().is_empty())
@@ -1193,7 +1201,7 @@ async fn create_proposal(
                 id,
                 change.change_id.to_string(),
                 change.revision_id.as_slice().as_slice(),
-                timestamp
+                seen_at
             ],
         )?;
     }
@@ -1786,6 +1794,7 @@ fn refresh_proposals(
             .transpose()?;
         let stack = discover_stack(store, target_head, source_head)?;
         let timestamp = now();
+        let seen_at = now_nanos();
         for change in &stack {
             connection.execute(
                 "INSERT OR IGNORE INTO proposal_revision_history (proposal_id, change_id, revision_id, seen_at) VALUES (?1, ?2, ?3, ?4)",
@@ -1793,7 +1802,7 @@ fn refresh_proposals(
                     proposal_id,
                     change.change_id.to_string(),
                     change.revision_id.as_slice().as_slice(),
-                    timestamp
+                    seen_at
                 ],
             )?;
         }
