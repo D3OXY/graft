@@ -4,6 +4,22 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+argon2.workspace = true
+axum.workspace = true
+blake3.workspace = true
+graft-core.workspace = true
+graft-sync.workspace = true
+rand.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
 [[bin]]
 name = "graft-hub"
 path = "src/main.rs"
+
+[dev-dependencies]
+tower = "0.5.3"

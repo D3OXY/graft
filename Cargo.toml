@@ -16,6 +16,8 @@ repository = "https://github.com/deoxycode/graft"
 
 [workspace.dependencies]
 age = { version = "0.12.1", default-features = false }
+argon2 = "0.5.3"
+axum = "0.8.8"
 ed25519-dalek = { version = "2.2.0", default-features = true }
 graft-core = { path = "crates/graft-core" }
 graft-sync = { path = "crates/graft-sync" }
@@ -25,6 +27,7 @@ rusqlite = { version = "0.37.0", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 thiserror = "2.0.17"
+tokio = { version = "1.47.1", features = ["macros", "net", "rt-multi-thread", "signal"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
 zstd = "0.13.3"
 
