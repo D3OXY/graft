@@ -231,6 +231,7 @@ pub fn propose_command(args: &[String]) -> Result<(), WorkspaceError> {
     let mut source = format!("branches/{}", workspace.state().active_branch);
     let mut target = "branches/main".to_owned();
     let mut title = None;
+    let mut source_set = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -253,12 +254,13 @@ pub fn propose_command(args: &[String]) -> Result<(), WorkspaceError> {
                         .clone(),
                 );
             }
-            value if !value.starts_with('-') && source.starts_with("branches/") => {
+            value if !value.starts_with('-') && !source_set => {
                 source = if value.starts_with("branches/") {
                     value.to_owned()
                 } else {
                     format!("branches/{value}")
                 };
+                source_set = true;
             }
             _ => {
                 return Err(invalid(
