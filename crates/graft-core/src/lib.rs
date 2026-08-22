@@ -7,6 +7,7 @@ pub mod merge;
 pub mod rewrite;
 pub mod store;
 pub mod tree;
+pub mod workspace;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 

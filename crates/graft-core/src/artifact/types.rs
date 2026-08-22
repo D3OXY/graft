@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt};
+use std::{cmp::Ordering, fmt, str::FromStr};
 
 use super::{Artifact, ArtifactError, ArtifactId, ArtifactKind};
 
@@ -31,6 +31,17 @@ impl ChangeId {
     pub fn random_from_seed(seed: u128) -> Self {
         Self(seed.to_be_bytes())
     }
+
+    pub fn random() -> Self {
+        Self(rand::random())
+    }
+
+    pub fn to_letter_string(self) -> String {
+        self.0[..8]
+            .iter()
+            .map(|byte| char::from(b'a' + byte % 26))
+            .collect()
+    }
 }
 
 impl fmt::Debug for ChangeId {
@@ -48,6 +59,30 @@ impl fmt::Display for ChangeId {
             write!(formatter, "{byte:02x}")?;
         }
         Ok(())
+    }
+}
+
+impl FromStr for ChangeId {
+    type Err = super::id::IdError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value.len() != 32 {
+            return Err(super::id::IdError::WrongLength);
+        }
+        let mut bytes = [0u8; 16];
+        for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+            bytes[index] = change_hex(pair[0])? << 4 | change_hex(pair[1])?;
+        }
+        Ok(Self(bytes))
+    }
+}
+
+fn change_hex(byte: u8) -> Result<u8, super::id::IdError> {
+    match byte {
+        b'0'..=b'9' => Ok(byte - b'0'),
+        b'a'..=b'f' => Ok(byte - b'a' + 10),
+        b'A'..=b'F' => Ok(byte - b'A' + 10),
+        _ => Err(super::id::IdError::InvalidHex),
     }
 }
 

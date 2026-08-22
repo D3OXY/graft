@@ -18,7 +18,10 @@ repository = "https://github.com/deoxycode/graft"
 graft-core = { path = "crates/graft-core" }
 graft-sync = { path = "crates/graft-sync" }
 blake3 = "1.8.2"
+rand = "0.9.2"
 rusqlite = { version = "0.37.0", features = ["bundled"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
 thiserror = "2.0.17"
 
 [profile.release]

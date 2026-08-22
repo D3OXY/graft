@@ -242,6 +242,33 @@ impl RepoStore {
         Ok(())
     }
 
+    pub(crate) fn replace_refs(&self, refs: &[(String, ArtifactId)]) -> Result<(), StoreError> {
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute("DELETE FROM refs", [])?;
+        for (name, target) in refs {
+            if name.is_empty() || name.contains('\0') || name.starts_with('/') {
+                return Err(StoreError::InvalidRefName);
+            }
+            let exists = transaction
+                .query_row(
+                    "SELECT 1 FROM artifacts WHERE id = ?1",
+                    params![target.as_slice().as_slice()],
+                    |_| Ok(()),
+                )
+                .optional()?
+                .is_some();
+            if !exists {
+                return Err(StoreError::MissingArtifact(name.clone()));
+            }
+            transaction.execute(
+                "INSERT INTO refs (name, target) VALUES (?1, ?2)",
+                params![name, target.as_slice().as_slice()],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn add_phantom(&self, id: ArtifactId) -> Result<(), StoreError> {
         self.connection.execute(
             "INSERT OR IGNORE INTO phantoms (id) VALUES (?1)",

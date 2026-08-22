@@ -9,5 +9,8 @@ path = "src/lib.rs"
 
 [dependencies]
 blake3.workspace = true
+rand.workspace = true
 rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
