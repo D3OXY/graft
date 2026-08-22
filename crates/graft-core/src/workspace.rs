@@ -932,7 +932,7 @@ mod tests {
         .expect("tip revision");
         assert_eq!(tip_revision.parents(), &[amended]);
         let tree = tip_revision.trees()[0];
-        let files = flatten_tree(&workspace.store(), tree).expect("tip tree");
+        let files = flatten_tree(workspace.store(), tree).expect("tip tree");
         let root_blob = workspace
             .store()
             .get(files["root.txt"].target)

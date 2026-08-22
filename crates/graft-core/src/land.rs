@@ -105,6 +105,9 @@ pub fn rebase_stack(
         if original.parents().len() > 1 {
             return Err(LandError::NonLinear(change.revision_id));
         }
+        if original.trees().len() > 1 {
+            return Err(LandError::Conflict(change.change_id));
+        }
         let original_base_tree = original
             .parents()
             .first()
