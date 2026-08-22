@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fs,
     io::Write,
     os::unix::fs::PermissionsExt,
@@ -227,6 +227,7 @@ impl Workspace {
 
     pub fn edit(&mut self, selector: &str) -> Result<(), WorkspaceError> {
         self.mutate(|workspace| {
+            let previous_tree = workspace.working_tree()?;
             let revision_id = workspace.find_change(selector)?;
             let revision = workspace.load_revision(revision_id)?;
             let tree = revision
@@ -239,7 +240,13 @@ impl Workspace {
             workspace.state.working_parents = vec![revision_id.to_string()];
             workspace.state.conflict_trees.clear();
             workspace.state.message = revision.message().to_owned();
-            materialize_tree(&workspace.store, &workspace.root, tree, None)?;
+            materialize_tree(
+                &workspace.store,
+                &workspace.root,
+                tree,
+                None,
+                Some(previous_tree),
+            )?;
             Ok(())
         })
     }
@@ -272,6 +279,7 @@ impl Workspace {
     pub fn switch(&mut self, name: &str) -> Result<(), WorkspaceError> {
         validate_branch(name)?;
         self.mutate(|workspace| {
+            let previous_tree = workspace.working_tree()?;
             workspace.snapshot_disk()?;
             let target = workspace
                 .store
@@ -287,7 +295,13 @@ impl Workspace {
             workspace.state.working_parents = vec![target.to_string()];
             workspace.state.conflict_trees.clear();
             workspace.state.message.clear();
-            materialize_tree(&workspace.store, &workspace.root, tree, None)?;
+            materialize_tree(
+                &workspace.store,
+                &workspace.root,
+                tree,
+                None,
+                Some(previous_tree),
+            )?;
             Ok(())
         })
     }
@@ -295,6 +309,7 @@ impl Workspace {
     pub fn merge(&mut self, name: &str) -> Result<bool, WorkspaceError> {
         validate_branch(name)?;
         self.mutate(|workspace| {
+            let previous_tree = workspace.working_tree()?;
             let current_tree = workspace.snapshot_disk()?;
             let left = workspace
                 .state
@@ -332,7 +347,13 @@ impl Workspace {
                 MergeOutcome::Clean(tree) => {
                     workspace.state.working_tree = tree.to_string();
                     workspace.state.conflict_trees.clear();
-                    materialize_tree(&workspace.store, &workspace.root, tree, None)?;
+                    materialize_tree(
+                        &workspace.store,
+                        &workspace.root,
+                        tree,
+                        None,
+                        Some(previous_tree),
+                    )?;
                     false
                 }
                 MergeOutcome::Conflict(trees) => {
@@ -343,7 +364,13 @@ impl Workspace {
                         .to_string();
                     workspace.state.conflict_trees =
                         trees.iter().map(ToString::to_string).collect();
-                    materialize_tree(&workspace.store, &workspace.root, trees[0], Some(&trees))?;
+                    materialize_tree(
+                        &workspace.store,
+                        &workspace.root,
+                        trees[0],
+                        Some(&trees),
+                        Some(previous_tree),
+                    )?;
                     true
                 }
             };
@@ -375,9 +402,16 @@ impl Workspace {
             })
             .collect::<Result<Vec<_>, WorkspaceError>>()?;
         self.store.replace_refs(&refs)?;
+        let previous_tree = self.working_tree()?;
         self.state = operation.state;
         self.save_state()?;
-        materialize_tree(&self.store, &self.root, self.working_tree()?, None)?;
+        materialize_tree(
+            &self.store,
+            &self.root,
+            self.working_tree()?,
+            None,
+            Some(previous_tree),
+        )?;
         let mut file = fs::File::create(path)?;
         if !lines.is_empty() {
             writeln!(file, "{}", lines.join("\n"))?;
@@ -398,6 +432,7 @@ impl Workspace {
         view: &[(String, ArtifactId)],
     ) -> Result<(), WorkspaceError> {
         self.mutate(|workspace| {
+            let previous_tree = workspace.working_tree()?;
             let status = workspace.status()?;
             if !status.changes.is_empty() || status.conflicts {
                 return Err(WorkspaceError::InvalidState(
@@ -430,7 +465,13 @@ impl Workspace {
             workspace.state.working_parents = vec![head.to_string()];
             workspace.state.conflict_trees.clear();
             workspace.state.message.clear();
-            materialize_tree(&workspace.store, &workspace.root, tree, None)?;
+            materialize_tree(
+                &workspace.store,
+                &workspace.root,
+                tree,
+                None,
+                Some(previous_tree),
+            )?;
             Ok(())
         })
     }
@@ -444,6 +485,7 @@ impl Workspace {
         branch: &str,
         revision_id: ArtifactId,
     ) -> Result<(), WorkspaceError> {
+        let previous_tree = self.working_tree()?;
         let revision = self.load_revision(revision_id)?;
         let tree =
             revision.trees().first().copied().ok_or_else(|| {
@@ -462,7 +504,7 @@ impl Workspace {
         self.state.working_parents = vec![revision_id.to_string()];
         self.state.conflict_trees.clear();
         self.state.message.clear();
-        materialize_tree(&self.store, &self.root, tree, None)?;
+        materialize_tree(&self.store, &self.root, tree, None, Some(previous_tree))?;
         self.save_state()?;
         Ok(())
     }
@@ -691,9 +733,21 @@ fn materialize_tree(
     root: &Path,
     tree: ArtifactId,
     conflict_trees: Option<&[ArtifactId]>,
+    previous_tree: Option<ArtifactId>,
 ) -> Result<(), WorkspaceError> {
     let files = flatten_tree(store, tree)?;
-    let tracked = files.keys().cloned().collect::<BTreeSet<_>>();
+    if let Some(previous_tree) = previous_tree {
+        let previous_files = flatten_tree(store, previous_tree)?;
+        for path in previous_files
+            .keys()
+            .filter(|path| !files.contains_key(*path))
+        {
+            let full = root.join(path);
+            if fs::symlink_metadata(&full).is_ok() {
+                fs::remove_file(full)?;
+            }
+        }
+    }
     for path in files.keys() {
         let full = root.join(path);
         if let Some(parent) = full.parent() {
@@ -726,7 +780,6 @@ fn materialize_tree(
             // the workspace state until the next snapshot resolves it.
         }
     }
-    let _ = tracked;
     Ok(())
 }
 
@@ -756,9 +809,11 @@ mod tests {
         assert_eq!(workspace.refs().expect("refs").len(), 1);
         workspace.branch("dev").expect("branch");
         fs::write(root.join("hello.txt"), b"dev").expect("edit");
+        fs::write(root.join("dev-only.txt"), b"dev-only").expect("dev file");
         let dev_head = workspace.snap("dev").expect("snap");
         workspace.switch("main").expect("switch");
         assert_eq!(fs::read(root.join("hello.txt")).expect("read"), b"hello");
+        assert!(!root.join("dev-only.txt").exists());
         workspace.undo().expect("undo");
         assert_eq!(workspace.state().active_branch, "dev");
         assert_eq!(
