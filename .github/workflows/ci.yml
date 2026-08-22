@@ -14,6 +14,7 @@ jobs:
           components: rustfmt, clippy
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo build -p graft-cli -p graft-hub
       - run: cargo test --workspace
 
   web:
