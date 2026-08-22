@@ -319,7 +319,10 @@ fn router(state: AppState) -> Router {
         .route("/api/repos", get(list_repos).post(create_repo))
         .route("/api/repos/{name}", get(repo_info))
         .route("/api/repos/{name}/browse", get(browse_repo))
-        .route("/api/repos/{name}/collaborators", post(add_collaborator))
+        .route(
+            "/api/repos/{name}/collaborators",
+            get(list_collaborators).post(add_collaborator),
+        )
         .route(
             "/api/repos/{name}/proposals",
             get(list_proposals).post(create_proposal),
@@ -832,14 +835,61 @@ async fn browse_repo(
                 .map(|name| serde_json::json!({ "name": name, "opaque": true }))
         })
         .collect::<Vec<_>>();
+    let mut profiles = Vec::new();
+    let mut profile_statement = connection.prepare(
+        "SELECT u.username, p.member_id, p.age_recipient, p.signing_public FROM profiles p JOIN users u ON u.id = p.user_id WHERE p.user_id = ?1 OR EXISTS (SELECT 1 FROM collaborators c WHERE c.repo_name = ?2 AND c.user_id = p.user_id) ORDER BY u.username",
+    )?;
+    let profile_rows = profile_statement.query_map(params![repo.owner_id, name], |row| {
+        Ok(serde_json::json!({
+            "username": row.get::<_, String>(0)?,
+            "member_id": row.get::<_, String>(1)?,
+            "age_recipient": row.get::<_, String>(2)?,
+            "signing_public": row.get::<_, String>(3)?
+        }))
+    })?;
+    profiles.extend(profile_rows.collect::<Result<Vec<_>, _>>()?);
     Ok(Json(serde_json::json!({
         "repo": name,
         "public": repo.is_public,
         "refs": refs,
         "files": files,
         "log": log,
-        "environments": environments
+        "environments": environments,
+        "profiles": profiles
     })))
+}
+
+async fn list_collaborators(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, ApiFailure> {
+    let connection = open_db(&state.config)?;
+    let repo = load_repo(&connection, &name)?.ok_or(HubError::NotFound)?;
+    let user = auth_user_optional(&state, &headers)?;
+    if !can_read(&connection, &repo, user.as_ref())? {
+        return Err(ApiFailure(HubError::NotFound));
+    }
+    let owner: String = connection.query_row(
+        "SELECT username FROM users WHERE id = ?1",
+        params![repo.owner_id],
+        |row| row.get(0),
+    )?;
+    let mut collaborators = vec![serde_json::json!({
+        "username": owner,
+        "mode": "owner"
+    })];
+    let mut statement = connection.prepare(
+        "SELECT u.username, c.mode FROM collaborators c JOIN users u ON u.id = c.user_id WHERE c.repo_name = ?1 ORDER BY u.username",
+    )?;
+    let rows = statement.query_map(params![name], |row| {
+        Ok(serde_json::json!({
+            "username": row.get::<_, String>(0)?,
+            "mode": row.get::<_, String>(1)?
+        }))
+    })?;
+    collaborators.extend(rows.collect::<Result<Vec<_>, _>>()?);
+    Ok(Json(collaborators))
 }
 
 async fn add_collaborator(

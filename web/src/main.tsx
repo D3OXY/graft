@@ -9,6 +9,7 @@ type Browse = {
   files: { path: string; kind: string; id: string }[];
   log: { revision: string; change_id: string; message: string; parents: string[] }[];
   environments: { name: string; opaque: boolean }[];
+  profiles: { username: string; member_id: string; age_recipient: string; signing_public: string }[];
 };
 type Proposal = { id: number; title: string; status: string; source: string; target: string; source_head: string; updated_at: number };
 type ProposalDetail = {
@@ -173,7 +174,7 @@ function Empty({ title, body, compact = false }: { title: string; body: string; 
 
 function FilesView({ browse }: { browse: Browse | null }) {
   if (!browse) return <Empty title="No repository loaded" body="Enter a repository name to browse it." />;
-  return <div className="view-grid"><section className="panel"><Heading eyebrow="main" title="Working tree" suffix={browse.files.length + " paths"} />{browse.files.length === 0 ? <Empty compact title="Empty repository" body="Push a snapshot from the Graft CLI to see files here." /> : <div className="file-list">{browse.files.map((file) => <div className="file-row" key={file.path}><span className="file-symbol">{file.kind === "Executable" ? "◆" : "·"}</span><span className="file-name">{file.path}</span><span className="file-kind">{file.kind.toLowerCase()}</span><code>{short(file.id)}</code></div>)}</div>}</section><section className="panel"><Heading eyebrow="view" title="Refs" />{browse.refs.map((ref) => <div className="ref-row" key={ref.name}><span>{ref.name}</span><code>{short(ref.target, 10)}</code></div>)}</section></div>;
+  return <div className="view-grid"><section className="panel"><Heading eyebrow="main" title="Working tree" suffix={browse.files.length + " paths"} />{browse.files.length === 0 ? <Empty compact title="Empty repository" body="Push a snapshot from the Graft CLI to see files here." /> : <div className="file-list">{browse.files.map((file) => <div className="file-row" key={file.path}><span className="file-symbol">{file.kind === "Executable" ? "◆" : "·"}</span><span className="file-name">{file.path}</span><span className="file-kind">{file.kind.toLowerCase()}</span><code>{short(file.id)}</code></div>)}</div>}</section><section className="panel"><Heading eyebrow="view" title="Refs" />{browse.refs.map((ref) => <div className="ref-row" key={ref.name}><span>{ref.name}</span><code>{short(ref.target, 10)}</code></div>)}{browse.profiles.length > 0 && <><div className="profile-heading"><span className="eyebrow">published identities</span></div><div className="profile-list">{browse.profiles.map((profile) => <div className="profile-row" key={profile.username}><span className="avatar small">{profile.username.slice(0, 1).toUpperCase()}</span><span><strong>{profile.username}</strong><small>{short(profile.member_id, 12)} · discovery only</small></span></div>)}</div></>}</section></div>;
 }
 function LogView({ browse }: { browse: Browse | null }) {
   if (!browse || browse.log.length === 0) return <Empty title="No Changes yet" body="A snapped Change will appear here with its immutable Revision." />;

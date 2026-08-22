@@ -75,6 +75,12 @@ h3 { margin: 0; font-size: 14px; }
 .file-list, .ref-row, .environment-list { padding: 7px 0; }
 .file-row, .ref-row { display: flex; align-items: center; gap: 12px; min-height: 45px; padding: 0 20px; border-bottom: 1px solid #1d1d22; font-size: 13px; }
 .file-row:last-child, .ref-row:last-child { border-bottom: 0; }
+.profile-heading { padding: 18px 20px 8px; border-top: 1px solid var(--line); }
+.profile-list { padding-bottom: 8px; }
+.profile-row { display: flex; align-items: center; gap: 9px; padding: 9px 20px; color: #b9b7bf; }
+.profile-row strong, .profile-row small { display: block; }
+.profile-row strong { color: #e3e1e6; font-size: 11px; }
+.profile-row small { margin-top: 3px; color: var(--faint); font-family: "SFMono-Regular", Consolas, monospace; font-size: 9px; }
 .file-symbol { width: 12px; color: var(--green); text-align: center; }
 .file-name { flex: 1; color: #e3e1e6; }
 .file-row code, .ref-row code { color: #83818c; font-size: 11px; }
