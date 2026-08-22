@@ -17,6 +17,9 @@ repository = "https://github.com/deoxycode/graft"
 [workspace.dependencies]
 graft-core = { path = "crates/graft-core" }
 graft-sync = { path = "crates/graft-sync" }
+blake3 = "1.8.2"
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+thiserror = "2.0.17"
 
 [profile.release]
 lto = "thin"
