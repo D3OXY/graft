@@ -129,7 +129,7 @@ fn v1_journey_survives_real_processes_and_restart() {
         &["init", path_string(&alice_workspace)],
         None,
     );
-    fs::write(&alice_workspace.join("README.md"), "hello from Alice\n").expect("README");
+    fs::write(alice_workspace.join("README.md"), "hello from Alice\n").expect("README");
     run_ok(
         &graft,
         &alice_workspace,
@@ -226,7 +226,7 @@ fn v1_journey_survives_real_processes_and_restart() {
         &["snap", "-m", "first review change"],
         None,
     );
-    fs::write(&bob_workspace.join("notes.txt"), "review notes\n").expect("notes");
+    fs::write(bob_workspace.join("notes.txt"), "review notes\n").expect("notes");
     run_ok(
         &graft,
         &bob_workspace,
