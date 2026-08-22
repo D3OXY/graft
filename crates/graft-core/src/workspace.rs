@@ -47,6 +47,8 @@ pub enum WorkspaceError {
     Merge(#[from] MergeError),
     #[error("rewrite error: {0}")]
     Rewrite(#[from] RewriteError),
+    #[error("secrets error: {0}")]
+    Secrets(#[from] crate::secrets::SecretError),
     #[error("graph error: {0}")]
     Graph(#[from] GraphError),
     #[error("branch `{0}` does not exist")]

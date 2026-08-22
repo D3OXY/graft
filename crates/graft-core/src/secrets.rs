@@ -52,6 +52,8 @@ pub enum SecretError {
     ValueTooLarge,
     #[error("secret bundle exceeds the 1 MiB limit")]
     BundleTooLarge,
+    #[error("invalid dotenv syntax at line {0}")]
+    MalformedDotenvLine(usize),
     #[error("environment name is invalid")]
     InvalidEnvironment,
     #[error("keyring signature is invalid")]
@@ -155,6 +157,14 @@ impl Credential {
     pub fn load(path: impl AsRef<Path>) -> Result<Self, SecretError> {
         let bytes = fs::read(path).map_err(|_| SecretError::MissingCredential)?;
         decode_credential(&bytes)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, SecretError> {
+        decode_credential(bytes)
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        encode_credential(self)
     }
 
     pub fn save_atomic(&self, path: impl AsRef<Path>) -> Result<(), SecretError> {
@@ -440,17 +450,14 @@ pub fn parse_dotenv(input: &[u8]) -> Result<SecretMap, SecretError> {
             continue;
         }
         let Some((name, value)) = line.split_once('=') else {
-            return Err(SecretError::MalformedCanonical);
+            return Err(SecretError::MalformedDotenvLine(line_number + 1));
         };
         if name.is_empty()
             || name.trim() != name
-            || value.starts_with(' ')
-            || value.starts_with('\t')
+            || value.starts_with('"')
+            || value.starts_with('\'')
         {
-            return Err(SecretError::InvalidName(format!(
-                "line {}",
-                line_number + 1
-            )));
+            return Err(SecretError::MalformedDotenvLine(line_number + 1));
         }
         validate_secret_name(name)?;
         let _ = line_number;
@@ -591,6 +598,31 @@ impl Keyring {
         self.environments
             .get(name)
             .ok_or_else(|| SecretError::MissingEnvironment(name.to_owned()))
+    }
+
+    pub fn unlock_environment(
+        &self,
+        name: &str,
+        credential: &Credential,
+    ) -> Result<EnvironmentIdentity, SecretError> {
+        let generation = self.environment(name)?;
+        let current = EnvironmentIdentity::unwrap_member_wrap(
+            &generation.member_wrap,
+            credential,
+            self.secrets_domain,
+            name,
+            generation.generation,
+        )?;
+        let mut cursor = current.clone();
+        while cursor.generation > 1 {
+            let previous_generation = cursor.generation - 1;
+            let link = generation
+                .history_links
+                .get(&previous_generation)
+                .ok_or(SecretError::InvalidPredecessor)?;
+            cursor = cursor.unwrap_history_link(link)?;
+        }
+        Ok(current)
     }
 }
 
