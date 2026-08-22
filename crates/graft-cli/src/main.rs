@@ -48,6 +48,7 @@ fn run(args: Vec<String>) -> Result<(), WorkspaceError> {
         "clone" => remote::clone_command(&args[1..])?,
         "pull" => remote::pull_command(&args[1..])?,
         "push" => remote::push_command(&args[1..])?,
+        "propose" => remote::propose_command(&args[1..])?,
         "remote" => remote::remote_command(&args[1..])?,
         "env" => secrets_env(&args[1..])?,
         "auth" => auth(&args[1..])?,

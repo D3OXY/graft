@@ -63,8 +63,7 @@ pub fn discover_stack(
             let base = graph
                 .topological(&[target])?
                 .into_iter()
-                .filter(|id| common.contains(id))
-                .last()
+                .rfind(|id| common.contains(id))
                 .ok_or(LandError::SourceNotDescended)?;
             graph.ancestors(base)?
         }

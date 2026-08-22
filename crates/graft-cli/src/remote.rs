@@ -225,6 +225,70 @@ pub fn push_command(args: &[String]) -> Result<(), WorkspaceError> {
     Ok(())
 }
 
+pub fn propose_command(args: &[String]) -> Result<(), WorkspaceError> {
+    let root = env::current_dir()?;
+    let workspace = Workspace::open(&root)?;
+    let mut source = format!("branches/{}", workspace.state().active_branch);
+    let mut target = "branches/main".to_owned();
+    let mut title = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--target" => {
+                index += 1;
+                target = args
+                    .get(index)
+                    .ok_or_else(|| {
+                        invalid("usage: graft propose [source] [--target ref] [--title text]")
+                    })?
+                    .clone();
+            }
+            "--title" | "-m" => {
+                index += 1;
+                title = Some(
+                    args.get(index)
+                        .ok_or_else(|| {
+                            invalid("usage: graft propose [source] [--target ref] [--title text]")
+                        })?
+                        .clone(),
+                );
+            }
+            value if !value.starts_with('-') && source.starts_with("branches/") => {
+                source = if value.starts_with("branches/") {
+                    value.to_owned()
+                } else {
+                    format!("branches/{value}")
+                };
+            }
+            _ => {
+                return Err(invalid(
+                    "usage: graft propose [source] [--target ref] [--title text]",
+                ))
+            }
+        }
+        index += 1;
+    }
+    let remote = read_workspace_remote(&root)?
+        .ok_or_else(|| invalid("no remote configured; use graft remote set <url>"))?;
+    let token = required_token(&remote.base)?;
+    let response = json_request(
+        &remote.base,
+        "POST",
+        &format!("/api/repos/{}/proposals", remote.repo),
+        Some(&token),
+        serde_json::json!({"source": source, "target": target, "title": title}),
+    )?;
+    let response = ensure_success(response)?;
+    let value: Value = serde_json::from_slice(&response.body)
+        .map_err(|_| invalid("Hub returned an invalid proposal response"))?;
+    let id = value
+        .get("id")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| invalid("Hub proposal response omitted its id"))?;
+    println!("Opened Proposal #{id} from {source} onto {target}");
+    Ok(())
+}
+
 fn sync_workspace(
     workspace: &mut Workspace,
     remote: &Remote,
