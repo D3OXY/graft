@@ -1,0 +1,9 @@
+[package]
+name = "graft-hub"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "graft-hub"
+path = "src/main.rs"

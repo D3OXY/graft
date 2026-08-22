@@ -1,0 +1,23 @@
+[workspace]
+members = [
+    "crates/graft-core",
+    "crates/graft-sync",
+    "crates/graft-cli",
+    "crates/graft-hub",
+    "crates/graft-e2e",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/deoxycode/graft"
+
+[workspace.dependencies]
+graft-core = { path = "crates/graft-core" }
+graft-sync = { path = "crates/graft-sync" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
