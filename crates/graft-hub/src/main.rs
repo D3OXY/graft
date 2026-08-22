@@ -279,8 +279,12 @@ fn initialize_database(config: &HubConfig) -> Result<(), HubError> {
     Ok(())
 }
 
-async fn health() -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "status": "ok", "version": VERSION }))
+async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "status": "ok",
+        "version": VERSION,
+        "max_artifact_bytes": state.config.max_artifact_bytes
+    }))
 }
 
 async fn register(

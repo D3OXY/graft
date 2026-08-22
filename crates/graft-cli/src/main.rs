@@ -15,6 +15,8 @@ use graft_core::{
     ChangeId, Workspace, WorkspaceError,
 };
 
+mod remote;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
@@ -43,6 +45,10 @@ fn run(args: Vec<String>) -> Result<(), WorkspaceError> {
         "switch" => switch_branch(&args[1..])?,
         "merge" => merge(&args[1..])?,
         "import" => git_import_command(&args[1..])?,
+        "clone" => remote::clone_command(&args[1..])?,
+        "pull" => remote::pull_command(&args[1..])?,
+        "push" => remote::push_command(&args[1..])?,
+        "remote" => remote::remote_command(&args[1..])?,
         "env" => secrets_env(&args[1..])?,
         "auth" => auth(&args[1..])?,
         "undo" => Workspace::open(env::current_dir()?)?.undo()?,
@@ -58,9 +64,11 @@ fn run(args: Vec<String>) -> Result<(), WorkspaceError> {
 
 fn print_help() {
     println!(
-        "graft {VERSION}\n\nUsage: graft <command> [options]\n\nCommands:\n  init [path]          initialize a workspace\n  status               show working-copy changes\n  log                  show revisions and Changes\n  desc -m <message>    describe the working Change\n  snap -m <message>    seal a Change and start the next one\n  amend                amend the parent Change\n  edit <change>        edit an older Change\n  branch [name]        create/switch or list branches\n  switch <name>        switch branches\n  merge <name>         merge a branch; conflicts remain data\n  undo                 undo the last mutating operation\n  rebuild              rebuild derived repository indexes\n\nChange IDs render as letters; Revision IDs render as hexadecimal."
+        "graft {VERSION}\n\nUsage: graft <command> [options]\n\nCommands:\n  init [path]          initialize a workspace\n  status               show working-copy changes\n  log                  show revisions and Changes\n  desc -m <message>    describe the working Change\n  snap -m <message>    seal a Change and start the next one\n  amend                amend the parent Change\n  edit <change>        edit an older Change\n  branch [name]        create/switch or list branches\n  switch <name>        switch branches\n  merge <name>         merge a branch; conflicts remain data\n  clone <hub/repo> <path>\n                       clone into a new workspace\n  pull                 fetch the configured remote\n  push [--create name] publish local artifacts and refs\n  remote [set <url>]  show or set the workspace remote\n  undo                 undo the last mutating operation\n  rebuild              rebuild derived repository indexes\n\nChange IDs render as letters; Revision IDs render as hexadecimal."
     );
-    println!("  env init|ls|set|unset|grant|revoke|rotate|run\n  auth whoami|export|import");
+    println!(
+        "  env init|ls|set|unset|grant|revoke|rotate|run\n  auth whoami|login|logout|export|import"
+    );
 }
 
 fn init(args: &[String]) -> Result<(), WorkspaceError> {
@@ -264,7 +272,7 @@ fn secrets_env(args: &[String]) -> Result<(), WorkspaceError> {
 fn auth(args: &[String]) -> Result<(), WorkspaceError> {
     let Some(command) = args.first().map(String::as_str) else {
         return Err(WorkspaceError::InvalidState(
-            "usage: graft auth whoami|export|import".into(),
+            "usage: graft auth whoami|login|logout|export|import".into(),
         ));
     };
     match command {
@@ -275,10 +283,12 @@ fn auth(args: &[String]) -> Result<(), WorkspaceError> {
             println!("member fingerprint: {}", member.member_id());
             Ok(())
         }
+        "login" => remote::login_command(&args[1..]),
+        "logout" => remote::logout_command(&args[1..]),
         "export" => auth_export(&args[1..]),
         "import" => auth_import(&args[1..]),
         "--help" | "-h" => {
-            println!("Usage: graft auth whoami | export --yes [path] | import <path>");
+            println!("Usage: graft auth whoami | login <hub-url> [--no-publish] | logout [hub-url] | export --yes [path] | import <path>");
             Ok(())
         }
         _ => Err(WorkspaceError::InvalidState(format!(

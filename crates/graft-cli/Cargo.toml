@@ -6,7 +6,9 @@ license.workspace = true
 
 [dependencies]
 graft-core.workspace = true
+graft-sync.workspace = true
 rand.workspace = true
+serde_json.workspace = true
 
 [[bin]]
 name = "graft"

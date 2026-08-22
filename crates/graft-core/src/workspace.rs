@@ -391,6 +391,51 @@ impl Workspace {
         Ok(())
     }
 
+    /// Apply a complete remote ref view after its artifacts have been verified and inserted.
+    /// Branch tips also become the local working-copy view, which makes an empty clone useful
+    /// without teaching the transport layer about workspace state.
+    pub fn apply_remote_view(
+        &mut self,
+        view: &[(String, ArtifactId)],
+    ) -> Result<(), WorkspaceError> {
+        self.mutate(|workspace| {
+            let status = workspace.status()?;
+            if !status.changes.is_empty() || status.conflicts {
+                return Err(WorkspaceError::InvalidState(
+                    "working copy has changes; snap before syncing".into(),
+                ));
+            }
+            let updates = view
+                .iter()
+                .map(|(name, target)| {
+                    Ok(crate::RefUpdate {
+                        name: name.clone(),
+                        expected: workspace.store.get_ref(name)?,
+                        new: Some(*target),
+                    })
+                })
+                .collect::<Result<Vec<_>, WorkspaceError>>()?;
+            if !updates.is_empty() {
+                workspace.store.cas_refs(&updates)?;
+            }
+            let branch = branch_ref(&workspace.state.active_branch);
+            let Some((_, head)) = view.iter().find(|(name, _)| name == &branch) else {
+                return Ok(());
+            };
+            let revision = workspace.load_revision(*head)?;
+            let tree = revision.trees().first().copied().ok_or_else(|| {
+                WorkspaceError::InvalidState("remote revision has no tree".into())
+            })?;
+            workspace.state.working_change = ChangeId::random().to_string();
+            workspace.state.working_tree = tree.to_string();
+            workspace.state.working_parents = vec![head.to_string()];
+            workspace.state.conflict_trees.clear();
+            workspace.state.message.clear();
+            materialize_tree(&workspace.store, &workspace.root, tree, None)?;
+            Ok(())
+        })
+    }
+
     pub fn refs(&self) -> Result<Vec<(String, ArtifactId)>, WorkspaceError> {
         Ok(self.store.refs()?)
     }
@@ -733,6 +778,41 @@ mod tests {
         workspace.snap("empty").expect("snap");
         let status = workspace.status().expect("status");
         assert!(status.changes.is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn remote_view_updates_empty_workspace() {
+        let root = temp_dir();
+        fs::create_dir_all(&root).expect("dir");
+        let mut workspace = Workspace::init(&root).expect("init");
+        fs::write(root.join("remote.txt"), b"remote").expect("file");
+        let revision = workspace.snap("remote").expect("snap");
+        workspace
+            .store()
+            .set_ref("branches/main", revision)
+            .expect("ref");
+        let tree = Revision::from_artifact(
+            workspace
+                .store()
+                .get(revision)
+                .expect("revision")
+                .expect("artifact"),
+        )
+        .expect("revision")
+        .trees()[0];
+        workspace
+            .apply_remote_view(&[("branches/main".into(), revision)])
+            .expect("view");
+        assert_eq!(
+            fs::read(root.join("remote.txt")).expect("materialized"),
+            b"remote"
+        );
+        assert_eq!(
+            workspace.state().working_parents,
+            vec![revision.to_string()]
+        );
+        assert_eq!(workspace.state().working_tree, tree.to_string());
         let _ = fs::remove_dir_all(root);
     }
 }
