@@ -22,8 +22,10 @@ use axum::{
 use graft_core::{
     artifact::{ChangeId, Revision},
     diff::interdiff,
+    graph::RevisionGraph,
     land::{discover_stack, land_stack},
     store::StoreError,
+    tree::flatten_tree,
     ArtifactId, Person, RepoStore,
 };
 use graft_sync::{
@@ -34,6 +36,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+mod web;
 
 #[derive(Clone)]
 struct AppState {
@@ -74,6 +78,10 @@ enum HubError {
     Land(#[from] graft_core::LandError),
     #[error("diff error")]
     Diff(#[from] graft_core::diff::DiffError),
+    #[error("graph error")]
+    Graph(#[from] graft_core::graph::GraphError),
+    #[error("tree error")]
+    Tree(#[from] graft_core::tree::TreeError),
 }
 
 struct ApiFailure(HubError);
@@ -114,6 +122,18 @@ impl From<graft_core::diff::DiffError> for ApiFailure {
     }
 }
 
+impl From<graft_core::graph::GraphError> for ApiFailure {
+    fn from(value: graft_core::graph::GraphError) -> Self {
+        Self(HubError::Graph(value))
+    }
+}
+
+impl From<graft_core::tree::TreeError> for ApiFailure {
+    fn from(value: graft_core::tree::TreeError) -> Self {
+        Self(HubError::Tree(value))
+    }
+}
+
 impl IntoResponse for ApiFailure {
     fn into_response(self) -> Response {
         let message = self.0.to_string();
@@ -128,7 +148,9 @@ impl IntoResponse for ApiFailure {
             | HubError::Io(_)
             | HubError::Sync(_)
             | HubError::Store(_)
-            | HubError::Diff(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            | HubError::Diff(_)
+            | HubError::Graph(_)
+            | HubError::Tree(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (status, Json(serde_json::json!({ "error": message }))).into_response()
     }
@@ -281,11 +303,13 @@ async fn run() -> Result<(), HubError> {
 
 fn router(state: AppState) -> Router {
     Router::new()
+        .route("/", get(web::index))
         .route("/health", get(health))
         .route("/api/register", post(register))
         .route("/api/tokens", post(create_token))
         .route("/api/repos", get(list_repos).post(create_repo))
         .route("/api/repos/{name}", get(repo_info))
+        .route("/api/repos/{name}/browse", get(browse_repo))
         .route("/api/repos/{name}/collaborators", post(add_collaborator))
         .route(
             "/api/repos/{name}/proposals",
@@ -334,6 +358,7 @@ fn router(state: AppState) -> Router {
         .route("/api/auth/member", post(publish_member))
         .route("/repo/{name}/sync", post(sync))
         .route("/settings/tokens/new", get(token_page))
+        .fallback(get(web::fallback))
         .with_state(state)
 }
 
@@ -644,6 +669,73 @@ async fn repo_info(
         owner,
         is_public: repo.is_public,
     }))
+}
+
+async fn browse_repo(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiFailure> {
+    let connection = open_db(&state.config)?;
+    let repo = load_repo(&connection, &name)?.ok_or(HubError::NotFound)?;
+    let user = auth_user_optional(&state, &headers)?;
+    if !can_read(&connection, &repo, user.as_ref())? {
+        return Err(ApiFailure(HubError::NotFound));
+    }
+    let store = RepoStore::open(&repo.path)?;
+    let refs = store
+        .refs()?
+        .into_iter()
+        .map(|(name, target)| serde_json::json!({ "name": name, "target": target.to_string() }))
+        .collect::<Vec<_>>();
+    let mut files = Vec::new();
+    let mut log = Vec::new();
+    let head = store.get_ref("branches/main")?;
+    if let Some(head) = head {
+        let revision = RevisionGraph::new(&store).revision(head)?;
+        if let Some(tree) = revision.trees().first().copied() {
+            files = flatten_tree(&store, tree)?
+                .into_iter()
+                .map(|(path, entry)| {
+                    serde_json::json!({
+                        "path": path,
+                        "kind": format!("{:?}", entry.kind),
+                        "id": entry.target.to_string()
+                    })
+                })
+                .collect();
+        }
+        log = RevisionGraph::new(&store)
+            .topological(&[head])?
+            .into_iter()
+            .filter_map(|id| {
+                let revision = RevisionGraph::new(&store).revision(id).ok()?;
+                Some(serde_json::json!({
+                    "revision": id.to_string(),
+                    "change_id": revision.change_id().to_letter_string(),
+                    "change_hex": revision.change_id().to_string(),
+                    "message": revision.message(),
+                    "parents": revision.parents().iter().map(ToString::to_string).collect::<Vec<_>>()
+                }))
+            })
+            .collect();
+    }
+    let environments = refs
+        .iter()
+        .filter_map(|reference| {
+            let name = reference.get("name")?.as_str()?;
+            name.strip_prefix("secrets/")
+                .map(|name| serde_json::json!({ "name": name, "opaque": true }))
+        })
+        .collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({
+        "repo": name,
+        "public": repo.is_public,
+        "refs": refs,
+        "files": files,
+        "log": log,
+        "environments": environments
+    })))
 }
 
 async fn add_collaborator(
@@ -2155,6 +2247,22 @@ mod tests {
                 .expect("proposal ref"),
             None
         );
+        std::fs::remove_dir_all(config.data_dir).expect("test cleanup");
+    }
+
+    #[tokio::test]
+    async fn embedded_spa_is_served_from_the_binary() {
+        let config = test_config();
+        initialize_database(&config).expect("database initializes");
+        let app = router(AppState {
+            config: Arc::new(config.clone()),
+        });
+        let response = request(&app, Method::GET, "/", None, Vec::new(), "text/plain").await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("body");
+        assert!(String::from_utf8_lossy(&body).contains("Graft Hub"));
         std::fs::remove_dir_all(config.data_dir).expect("test cleanup");
     }
 }
