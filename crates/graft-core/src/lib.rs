@@ -5,6 +5,7 @@ pub mod diff;
 pub mod graph;
 pub mod merge;
 pub mod rewrite;
+pub mod secrets;
 pub mod store;
 pub mod tree;
 pub mod workspace;
